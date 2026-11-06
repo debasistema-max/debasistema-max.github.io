@@ -2,15 +2,15 @@
 
 Destino preparado: `https://debasistema-max.github.io/`.
 
-Nenhum repositório foi criado e nenhuma publicação foi executada durante o
-desenvolvimento. Este roteiro deve ser seguido somente após autorização final.
-Em 5 de novembro de 2026, a API do repositório e a URL pública responderam `404`.
+O repositório foi criado e está temporariamente privado. O executor remoto de
+sincronização já funciona nesse estado. A publicação do frontend continua
+dependente de autorização final.
 
 ## 1. Verificações antes da criação
 
 1. Abra `https://github.com/debasistema-max/debasistema-max.github.io` e confirme
-   que o repositório continua inexistente.
-2. Confirme que `https://debasistema-max.github.io/` não hospeda outro site.
+   que o repositório continua privado.
+2. Confirme que `https://debasistema-max.github.io/` permanece indisponível.
 3. Reautentique o GitHub CLI na conta correta:
 
    ```powershell
@@ -20,16 +20,19 @@ Em 5 de novembro de 2026, a API do repositório e a URL pública responderam `40
 
 4. Não utilize o repositório do CRM como destino do portal.
 
-## 2. Criar o repositório independente
+## 2. Repositório independente
 
-Crie um repositório público vazio chamado exatamente:
+O repositório reservado chama-se:
 
 ```text
 debasistema-max.github.io
 ```
 
-O conteúdo de `debaportal` deve ficar na raiz desse novo repositório. Não envie
+O conteúdo de `debaportal` fica na raiz desse repositório. Não envie
 `.env.local`, `node_modules`, `dist`, planilhas ou dados comerciais.
+
+Mantenha o repositório privado durante a preparação. Por usar o nome especial de
+site do usuário, torná-lo público pode ativar o Pages automaticamente.
 
 ## 3. Configurar o Supabase no GitHub
 
