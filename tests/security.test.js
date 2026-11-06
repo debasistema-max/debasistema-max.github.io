@@ -7,6 +7,7 @@ const publicFiles = [
   'src/main.js',
   'src/styles.css',
   'src/config.js',
+  'src/services/api.js',
   'src/lib/exporters.js'
 ];
 
@@ -56,5 +57,14 @@ describe('contratos de autorização', () => {
     assert.match(edgeFunction, /SUPABASE_SERVICE_ROLE_KEY/);
     const frontend = publicFiles.map((path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')).join('\n');
     assert.doesNotMatch(frontend, /SUPABASE_SERVICE_ROLE_KEY/);
+  });
+
+  it('entrega fotos somente por função autenticada e mantém a origem fora do frontend', () => {
+    const edgeFunction = readFileSync(new URL('../supabase/functions/product-image/index.ts', import.meta.url), 'utf8');
+    const frontend = publicFiles.map((path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')).join('\n');
+    assert.match(edgeFunction, /await requireUser\(req\)/);
+    assert.match(edgeFunction, /PRODUCT_IMAGE_ORIGIN/);
+    assert.match(edgeFunction, /Cache-Control.*private/);
+    assert.doesNotMatch(frontend, /PRODUCT_IMAGE_ORIGIN|uploads\/products/);
   });
 });

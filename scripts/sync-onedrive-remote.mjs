@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx";
 import { parsePortalWorkbook } from "./lib/catalog-workbook.mjs";
+import { fetchCatalogPhotos } from "./lib/catalog-photos.mjs";
 
 function requiredEnv(name) {
   const value = process.env[name]?.trim();
@@ -37,6 +38,18 @@ async function importDataset(dataset, sourceName) {
   return { kind: dataset.kind, rows: dataset.rows.length };
 }
 
+async function importPhotos(rows, sourceName) {
+  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/sync_product_images`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ source_name: sourceName, rows }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(`FOTOS: importacao recusada (${result.message || response.status}).`);
+  if (result?.ok === false) throw new Error(`FOTOS: ${result.error || "falha de validacao no banco"}.`);
+  return result;
+}
+
 try {
   const jobResponse = await fetch(
     `${supabaseUrl}/rest/v1/sync_jobs?id=eq.${encodeURIComponent(jobId)}&select=id,status,source_size,source_modified,source_download_url`,
@@ -62,6 +75,20 @@ try {
   const results = [];
   for (const dataset of parsed.datasets) results.push(await importDataset(dataset, sourceName));
   const summary = Object.fromEntries(results.map((result) => [result.kind.toLowerCase(), result.rows]));
+  try {
+    const photoRows = await fetchCatalogPhotos({
+      apiUrl: requiredEnv("PRODUCT_CATALOG_API_URL"),
+      imageOrigin: requiredEnv("PRODUCT_IMAGE_ORIGIN"),
+    });
+    const photoResult = await importPhotos(photoRows, `catalog-api:${jobId}`);
+    summary.fotos = Number(photoResult.rows_applied || 0);
+    summary.fotos_ignoradas = Number(photoResult.rows_skipped || 0);
+    summary.fotos_removidas = Number(photoResult.rows_removed || 0);
+  } catch (photoError) {
+    summary.fotos = null;
+    summary.aviso_fotos = "As fotos anteriores foram mantidas porque a fonte estava indisponivel.";
+    console.warn(photoError instanceof Error ? photoError.message : "Falha ao sincronizar fotos.");
+  }
   await updateJob({
     status: "CONCLUIDO",
     summary,

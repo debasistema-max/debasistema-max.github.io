@@ -8,6 +8,8 @@ import { STATES, escapeHtml, formatDateTime, integer, money, onlyDigits, stockLe
 const root = document.querySelector('#app');
 let pendingImport = null;
 let needsPasswordSetup = false;
+let photoZoom = 1;
+const photoCache = new Map();
 
 const routes = {
   home: 'Início',
@@ -37,6 +39,23 @@ function stateOptions(selected) {
 function toastMarkup() {
   if (!state.toast) return '';
   return `<div class="toast toast-${escapeHtml(state.toast.type)}" role="status"><span>${escapeHtml(state.toast.message)}</span><button type="button" data-action="dismiss-toast" aria-label="Fechar">×</button></div>`;
+}
+
+function photoDialogMarkup() {
+  return `<dialog id="product-photo-dialog" class="photo-dialog" aria-labelledby="product-photo-title">
+    <div class="photo-dialog-head">
+      <div><span id="product-photo-code"></span><strong id="product-photo-title">Foto do produto</strong></div>
+      <div class="photo-toolbar" aria-label="Controles de zoom">
+        <button type="button" data-action="photo-zoom-out" aria-label="Diminuir zoom">−</button>
+        <span id="product-photo-zoom">100%</span>
+        <button type="button" data-action="photo-zoom-in" aria-label="Aumentar zoom">+</button>
+        <button type="button" data-action="photo-zoom-reset">Ajustar</button>
+        <button type="button" data-action="close-product-photo" aria-label="Fechar foto">×</button>
+      </div>
+    </div>
+    <div class="photo-stage" data-photo-stage><img id="product-photo-full" alt=""></div>
+    <p>Use os botões para ampliar. Toque duas vezes na foto para alternar o zoom.</p>
+  </dialog>`;
 }
 
 function renderSetup() {
@@ -136,7 +155,8 @@ function renderShell() {
         </main>
       </div>
       ${toastMarkup()}
-    </div>`;
+    </div>${photoDialogMarkup()}`;
+  void hydrateProductPhotos(root);
 }
 
 function navButton(route, iconName, label, current) {
@@ -213,6 +233,9 @@ function productResults(mode, cartType) {
 function productCard(product, mode, cartType) {
   const level = stockLevel(product.stock_origin);
   return `<article class="product-card">
+    <button class="product-photo" type="button" data-product-photo="${escapeHtml(product.code)}" data-photo-label="${escapeHtml(product.description)}" aria-label="Ampliar foto de ${escapeHtml(product.description)}" disabled>
+      <span data-photo-placeholder>Carregando foto…</span>
+    </button>
     <div class="product-top"><span class="code-chip">${escapeHtml(product.code)}</span><span class="stock-badge stock-${level.key}"><i></i>${escapeHtml(level.label)}</span></div>
     <h3>${escapeHtml(product.description)}</h3>
     <p>${escapeHtml(product.applications.join(' · ') || 'Aplicação não informada')}</p>
@@ -220,6 +243,69 @@ function productCard(product, mode, cartType) {
     <div class="stock-grid"><div><span>PR</span><strong>${integer(product.stock_pr)}</strong></div><div><span>SP</span><strong>${integer(product.stock_sp)}</strong></div><div class="price"><span>Preço</span><strong>${money(product.price)}</strong></div></div>
     ${mode === 'list' ? '' : `<div class="product-actions">${mode === 'item' ? `<button class="button button-secondary" data-add-product="${product.id}" data-cart="quotation">+ Cotação</button><button class="button button-primary" data-add-product="${product.id}" data-cart="order">+ Pedido</button>` : `<button class="button button-primary button-full" data-add-product="${product.id}" data-cart="${cartType}">Adicionar</button>`}</div>`}
   </article>`;
+}
+
+function cachedProductPhoto(code) {
+  if (!photoCache.has(code)) {
+    const request = api.getProductImage(code)
+      .then((blob) => blob ? URL.createObjectURL(blob) : null)
+      .catch(() => null);
+    photoCache.set(code, request);
+  }
+  return photoCache.get(code);
+}
+
+async function hydrateProductPhotos(scope) {
+  if (!api || !state.session) return;
+  const buttons = [...scope.querySelectorAll('[data-product-photo]')];
+  await Promise.all(buttons.map(async (button) => {
+    const url = await cachedProductPhoto(button.dataset.productPhoto);
+    if (!button.isConnected) return;
+    if (!url) {
+      button.querySelector('[data-photo-placeholder]').textContent = 'Sem foto';
+      button.classList.add('photo-missing');
+      return;
+    }
+    const image = document.createElement('img');
+    image.src = url;
+    image.alt = button.dataset.photoLabel || button.dataset.productPhoto;
+    image.loading = 'lazy';
+    button.replaceChildren(image);
+    button.dataset.photoUrl = url;
+    button.disabled = false;
+  }));
+}
+
+function clearPhotoCache() {
+  for (const pending of photoCache.values()) {
+    Promise.resolve(pending).then((url) => { if (url) URL.revokeObjectURL(url); }).catch(() => {});
+  }
+  photoCache.clear();
+}
+
+function applyPhotoZoom(nextZoom) {
+  photoZoom = Math.min(4, Math.max(1, Number(nextZoom) || 1));
+  const dialog = document.querySelector('#product-photo-dialog');
+  dialog?.style.setProperty('--photo-zoom', String(photoZoom));
+  const image = dialog?.querySelector('#product-photo-full');
+  if (image) {
+    image.style.width = `${photoZoom * 100}%`;
+    image.style.minWidth = `${photoZoom * 100}%`;
+  }
+  const label = dialog?.querySelector('#product-photo-zoom');
+  if (label) label.textContent = `${Math.round(photoZoom * 100)}%`;
+}
+
+function openProductPhoto(button) {
+  const dialog = document.querySelector('#product-photo-dialog');
+  const image = dialog?.querySelector('#product-photo-full');
+  if (!dialog || !image || !button.dataset.photoUrl) return;
+  dialog.querySelector('#product-photo-code').textContent = button.dataset.productPhoto;
+  dialog.querySelector('#product-photo-title').textContent = button.dataset.photoLabel || 'Foto do produto';
+  image.src = button.dataset.photoUrl;
+  image.alt = button.dataset.photoLabel || button.dataset.productPhoto;
+  applyPhotoZoom(1);
+  dialog.showModal();
 }
 
 function renderDocumentBuilder(type) {
@@ -301,12 +387,12 @@ function renderAdmin() {
   const syncLabels = { SOLICITADO: 'Solicitada', EM_EXECUCAO: 'Em execução', CONCLUIDO: 'Concluída', FALHOU: 'Falhou' };
   const syncActive = ['SOLICITADO', 'EM_EXECUCAO'].includes(syncJob?.status);
   const syncStatus = syncJob
-    ? `<div class="notice ${syncJob.status === 'FALHOU' ? 'notice-error' : ''}"><strong>${escapeHtml(syncLabels[syncJob.status] || syncJob.status)}</strong>${syncJob.error_message ? `<span>${escapeHtml(syncJob.error_message)}</span>` : ''}</div>`
+    ? `<div class="notice ${syncJob.status === 'FALHOU' ? 'notice-error' : ''}"><strong>${escapeHtml(syncLabels[syncJob.status] || syncJob.status)}</strong>${syncJob.summary?.fotos !== undefined && syncJob.summary?.fotos !== null ? `<span>${integer(syncJob.summary.fotos)} foto(s) disponíveis</span>` : ''}${syncJob.summary?.aviso_fotos ? `<span>${escapeHtml(syncJob.summary.aviso_fotos)}</span>` : ''}${syncJob.error_message ? `<span>${escapeHtml(syncJob.error_message)}</span>` : ''}</div>`
     : '<p class="muted">Nenhuma solicitação online registrada.</p>';
   return `${pageHeader('Configuração', 'Administração', 'Gerencie a atualização dos dados sem expor credenciais no navegador.')}
     <div class="admin-grid">
       <section class="panel admin-card"><div class="section-title"><span>1</span><div><h2>Importação manual</h2><p>XLSX, XLS ou CSV. O arquivo original não é enviado nem armazenado.</p></div></div><input id="import-file" type="file" accept=".xlsx,.xls,.csv"><div id="import-preview">${pendingImport ? `<div class="import-ready"><strong>${escapeHtml(pendingImport.fileName)}</strong><span>${integer(pendingImport.rows.length)} linhas · tipo ${escapeHtml(pendingImport.kind)}</span><button class="button button-primary" data-action="commit-import">Validar e importar</button></div>` : '<p class="muted">Selecione um arquivo para validar os cabeçalhos.</p>'}</div></section>
-      <section class="panel admin-card"><div class="section-title"><span>2</span><div><h2>OneDrive</h2><p>A sincronização é executada somente quando um administrador solicitar.</p></div></div><p>Última atualização: <strong>${escapeHtml(formatDateTime(state.lastSync?.finished_at || state.lastSync?.started_at))}</strong></p>${syncStatus}<button class="button button-primary" data-action="sync-drive" ${syncActive ? 'disabled' : ''}>${syncActive ? 'Sincronizando…' : 'Sincronizar agora'}</button></section>
+      <section class="panel admin-card"><div class="section-title"><span>2</span><div><h2>Catálogo online</h2><p>Planilha e fotos são sincronizadas somente quando um administrador solicitar.</p></div></div><p>Última atualização: <strong>${escapeHtml(formatDateTime(state.lastSync?.finished_at || state.lastSync?.started_at))}</strong></p>${syncStatus}<button class="button button-primary" data-action="sync-drive" ${syncActive ? 'disabled' : ''}>${syncActive ? 'Sincronizando…' : 'Sincronizar agora'}</button></section>
       <section class="panel admin-card"><div class="section-title"><span>3</span><div><h2>Armazenamento</h2><p>Monitoramento das tabelas estruturadas do DebaPortal.</p></div></div>${storageAlert}${summary.storage.length ? `<ul class="metric-list">${summary.storage.map((row) => `<li><span>${escapeHtml(row.relation || row.table_name)}</span><strong>${escapeHtml(row.pretty_size || `${row.bytes || 0} bytes`)}</strong></li>`).join('')}</ul>` : '<p class="muted">Resumo indisponível.</p>'}</section>
       <section class="panel admin-card"><div class="section-title"><span>4</span><div><h2>Filiais</h2><p>Cadastre origens antes das tabelas comerciais.</p></div></div><form id="branch-form" class="compact-form"><input name="code" maxlength="20" placeholder="Código (ex.: SP)" required><input name="name" maxlength="120" placeholder="Nome da filial" required><select name="state" required><option value="">UF</option>${stateOptions('')}</select><button class="button button-primary" type="submit">Adicionar filial</button></form><ul class="inline-list">${summary.branches.map((branch) => `<li><strong>${escapeHtml(branch.code)}</strong><span>${escapeHtml(branch.name)} · ${escapeHtml(branch.state)}</span></li>`).join('')}</ul></section>
       <section class="panel admin-card"><div class="section-title"><span>5</span><div><h2>Tabelas comerciais</h2><p>Destino e origem definem onde cada tabela pode ser usada.</p></div></div><form id="price-table-form" class="compact-form"><input name="code" maxlength="60" placeholder="Código" required><input name="name" maxlength="160" placeholder="Nome" required><input name="version" type="number" min="1" value="1" required><select name="destinationState"><option value="">Todos os destinos</option>${stateOptions('')}</select><select name="originBranchId"><option value="">Todas as origens</option>${summary.branches.map((branch) => `<option value="${branch.id}">${escapeHtml(branch.code)} · ${escapeHtml(branch.name)}</option>`).join('')}</select><input name="validFrom" type="date" value="${new Date().toISOString().slice(0, 10)}" required><button class="button button-primary" type="submit">Criar tabela</button></form><ul class="inline-list">${state.priceTables.map((table) => `<li><strong>${escapeHtml(table.code)} · v${table.version}</strong><span>${escapeHtml(table.name)} · ${escapeHtml(table.destination_state || 'Todos')}</span></li>`).join('')}</ul></section>
@@ -387,7 +473,7 @@ async function initialize() {
       if (needsPasswordSetup) { renderPasswordSetup(); return; }
       try { await loadAuthenticatedContext(); renderShell(); }
       catch (error) { setToast(error.message || 'Perfil sem acesso.', 'error'); await api.signOut(); }
-    } else { state.profile = null; renderLogin(); }
+    } else { clearPhotoCache(); state.profile = null; renderLogin(); }
   });
 }
 
@@ -455,6 +541,7 @@ root.addEventListener('submit', async (event) => {
 });
 
 root.addEventListener('click', async (event) => {
+  if (event.target.id === 'product-photo-dialog') { event.target.close(); return; }
   const routeButton = event.target.closest('[data-route]');
   if (routeButton) {
     navigate(routeButton.dataset.route);
@@ -464,9 +551,15 @@ root.addEventListener('click', async (event) => {
     updateView(); return;
   }
   const action = event.target.closest('[data-action]')?.dataset.action;
+  const photoButton = event.target.closest('[data-product-photo]');
+  if (photoButton && !photoButton.disabled) { openProductPhoto(photoButton); return; }
+  if (action === 'close-product-photo') { document.querySelector('#product-photo-dialog')?.close(); return; }
+  if (action === 'photo-zoom-in') { applyPhotoZoom(photoZoom + .5); return; }
+  if (action === 'photo-zoom-out') { applyPhotoZoom(photoZoom - .5); return; }
+  if (action === 'photo-zoom-reset') { applyPhotoZoom(1); return; }
   if (action === 'dismiss-toast') { state.toast = null; updateView(); return; }
   if (action === 'toggle-nav') { document.querySelector('.side-nav')?.classList.toggle('open'); return; }
-  if (action === 'sign-out') { await api.signOut(); return; }
+  if (action === 'sign-out') { clearPhotoCache(); await api.signOut(); return; }
   if (action === 'search-products') { state.query = document.querySelector('#product-query')?.value.trim() || ''; state.productPage = 1; await refreshProducts(); return; }
   const pageButton = event.target.closest('[data-page]');
   if (pageButton && !pageButton.disabled) { state.productPage = Number(pageButton.dataset.page); await refreshProducts(); return; }
@@ -524,6 +617,10 @@ root.addEventListener('click', async (event) => {
       setToast('Permissão atualizada.', 'success'); await loadAdmin();
     } catch (error) { setToast(error.message || 'Falha ao atualizar usuário.', 'error'); updateView(); }
   }
+});
+
+root.addEventListener('dblclick', (event) => {
+  if (event.target.closest('[data-photo-stage]')) applyPhotoZoom(photoZoom === 1 ? 2 : 1);
 });
 
 root.addEventListener('change', async (event) => {

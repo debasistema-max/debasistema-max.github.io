@@ -88,6 +88,25 @@ class SupabaseApi {
 
   async getAccessToken() { return (await this.getSession())?.access_token || ''; }
 
+  async getProductImage(code) {
+    const session = await this.getSession();
+    if (!session?.access_token) throw new Error('Sessão inválida ou expirada.');
+    const response = await fetch(`${config.supabaseUrl}/functions/v1/product-image?code=${encodeURIComponent(code)}`, {
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+        apikey: config.supabaseAnonKey,
+        Accept: 'image/webp,image/png,image/jpeg'
+      }
+    });
+    if (response.status === 404) return null;
+    if (!response.ok) throw new Error(response.status === 401 ? 'Sessão inválida ou expirada.' : 'Foto temporariamente indisponível.');
+    const type = String(response.headers.get('content-type') || '').split(';', 1)[0].toLowerCase();
+    if (!['image/webp', 'image/png', 'image/jpeg'].includes(type)) throw new Error('Formato de foto inválido.');
+    const blob = await response.blob();
+    if (!blob.size || blob.size > 5_000_000) throw new Error('Foto fora do limite permitido.');
+    return blob;
+  }
+
   async loadContext() {
     const [tablesResult, syncResult] = await Promise.all([
       this.client.from('price_tables').select('id,code,name,destination_state,version,valid_from,valid_to,active,origin_branch:branches!price_tables_origin_branch_id_fkey(code)').eq('active', true).order('name'),
@@ -316,6 +335,7 @@ class DemoApi {
   async updatePassword() { return true; }
   async getProfile() { return { id: 'demo-user', full_name: 'Demonstração', role: 'ADMIN', active: true, allowed_states: [], allowed_origins: [] }; }
   async getAccessToken() { return 'demo'; }
+  async getProductImage() { return null; }
   async loadContext() {
     return { priceTables: [
       { id: 'demo-sp', code: 'SP-PADRAO', name: 'Tabela padrão SP', destination_state: 'SP', origin_code: 'SP', version: 1, active: true },

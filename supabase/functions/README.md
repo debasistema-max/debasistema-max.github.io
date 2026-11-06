@@ -6,6 +6,7 @@ Estas funcoes pertencem ao projeto Supabase exclusivo do DebaPortal. Nao as publ
 
 - `consulta-cnpj`: exige JWT valido, valida os digitos verificadores e consulta BrasilAPI com fallback para ReceitaWS. A resposta nao e gravada como cliente.
 - `sync-onedrive`: valida ADMIN, cria uma solicitação protegida e dispara o workflow remoto somente quando o portal solicitar.
+- `product-image`: exige JWT e perfil ativo, valida o código e entrega a foto pelo backend sem expor a origem ao navegador.
 - `admin-users`: exige perfil ADMIN e envia convite pelo Supabase Auth. A chave administrativa permanece somente no ambiente seguro da Edge Function.
 
 ## Planilha comercial atual
@@ -30,9 +31,14 @@ ONEDRIVE_WORKBOOK_NAME=<arquivo exato autorizado>
 GITHUB_SYNC_TOKEN=<token com Actions write no repositorio>
 GITHUB_SYNC_REPOSITORY=debasistema-max/debasistema-max.github.io
 GITHUB_SYNC_WORKFLOW=sync-catalog.yml
+PRODUCT_IMAGE_ORIGIN=<origem HTTPS autorizada das fotos>
 ```
 
 `SUPABASE_URL`, `SUPABASE_ANON_KEY` e `SUPABASE_SERVICE_ROLE_KEY` sao fornecidas pelo ambiente das Edge Functions. O workflow recebe sua propria copia protegida de `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY`. Nunca copie chaves ou segredos para o frontend, arquivos versionados ou logs.
+
+O workflow também recebe `PRODUCT_CATALOG_API_URL` e `PRODUCT_IMAGE_ORIGIN` como
+secrets do GitHub Actions. Ele grava somente o caminho validado da foto. A Edge
+Function faz o download sob demanda e não redireciona o navegador para a fonte.
 
 O aplicativo Microsoft usa somente `Files.Read` delegado. A funcao aceita apenas a pasta e o arquivo configurados nos secrets; a requisicao do navegador nao pode substituir esses alvos.
 
@@ -59,6 +65,7 @@ Somente depois de criar o Supabase independente, aplicar as migracoes revisadas 
 ```powershell
 supabase functions deploy consulta-cnpj --project-ref REF_DO_DEBAPORTAL
 supabase functions deploy sync-onedrive --project-ref REF_DO_DEBAPORTAL
+supabase functions deploy product-image --project-ref REF_DO_DEBAPORTAL
 supabase functions deploy admin-users --project-ref REF_DO_DEBAPORTAL
 ```
 
