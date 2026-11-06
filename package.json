@@ -1,0 +1,25 @@
+{
+  "name": "debaportal",
+  "private": true,
+  "version": "0.1.0",
+  "homepage": "https://debasistema-max.github.io/",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "sync:catalog": "node scripts/sync-catalog-workbook.mjs",
+    "validate:catalog": "node scripts/validate-catalog-workbook.mjs",
+    "test": "node --test",
+    "test:watch": "node --test --watch"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.57.4",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.9",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  },
+  "devDependencies": {
+    "vite": "^7.1.9"
+  }
+}

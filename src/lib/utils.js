@@ -1,0 +1,67 @@
+export const STATES = [
+  'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS',
+  'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC',
+  'SP', 'SE', 'TO'
+];
+
+export function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+export function money(value) {
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL'
+  }).format(Number(value || 0));
+}
+
+export function integer(value) {
+  if (value === null || value === undefined || value === '') return '—';
+  return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 }).format(Number(value || 0));
+}
+
+export function formatDateTime(value) {
+  if (!value) return 'Não informado';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? 'Não informado'
+    : new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(date);
+}
+
+export function onlyDigits(value) {
+  return String(value ?? '').replace(/\D/g, '');
+}
+
+export function debounce(callback, delay = 250) {
+  let timer;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => callback(...args), delay);
+  };
+}
+
+export function stockLevel(quantity) {
+  if (quantity === null || quantity === undefined || quantity === '') return { key: 'unknown', label: 'Sem dados' };
+  const value = Number(quantity || 0);
+  if (value > 50) return { key: 'high', label: 'Disponível' };
+  if (value > 0) return { key: 'low', label: 'Estoque baixo' };
+  return { key: 'none', label: 'Indisponível' };
+}
+
+export function safeFileName(value) {
+  return String(value || 'debaportal')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9_-]+/gi, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase();
+}
+
+export function uuid() {
+  return globalThis.crypto?.randomUUID?.() || `local-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}

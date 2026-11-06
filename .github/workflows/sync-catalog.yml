@@ -1,0 +1,40 @@
+name: Sincronizar catálogo
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: Identificador seguro da solicitação
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: debaportal-catalog-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Baixar código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Processar solicitação
+        run: node scripts/sync-onedrive-remote.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SYNC_JOB_ID: ${{ inputs.job_id }}
