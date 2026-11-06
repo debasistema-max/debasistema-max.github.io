@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import { parsePortalWorkbook } from "./lib/catalog-workbook.mjs";
-import { fetchCatalogPhotos } from "./lib/catalog-photos.mjs";
+import { assertSafePhotoSnapshot, fetchCatalogPhotos } from "./lib/catalog-photos.mjs";
 
 function requiredEnv(name) {
   const value = process.env[name]?.trim();
@@ -50,6 +50,16 @@ async function importPhotos(rows, sourceName) {
   return result;
 }
 
+async function currentPhotoCount() {
+  const response = await fetch(`${supabaseUrl}/rest/v1/product_images?select=product_id`, {
+    method: "HEAD",
+    headers: { ...headers, Prefer: "count=exact" },
+  });
+  if (!response.ok) throw new Error(`FOTOS: contagem atual indisponivel (${response.status}).`);
+  const match = String(response.headers.get("content-range") || "").match(/\/(\d+)$/);
+  return match ? Number(match[1]) : 0;
+}
+
 try {
   const jobResponse = await fetch(
     `${supabaseUrl}/rest/v1/sync_jobs?id=eq.${encodeURIComponent(jobId)}&select=id,status,source_size,source_modified,source_download_url`,
@@ -80,6 +90,7 @@ try {
       apiUrl: requiredEnv("PRODUCT_CATALOG_API_URL"),
       imageOrigin: requiredEnv("PRODUCT_IMAGE_ORIGIN"),
     });
+    assertSafePhotoSnapshot(photoRows.length, await currentPhotoCount());
     const photoResult = await importPhotos(photoRows, `catalog-api:${jobId}`);
     summary.fotos = Number(photoResult.rows_applied || 0);
     summary.fotos_ignoradas = Number(photoResult.rows_skipped || 0);

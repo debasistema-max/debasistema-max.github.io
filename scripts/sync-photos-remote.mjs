@@ -1,4 +1,4 @@
-import { fetchCatalogPhotos } from "./lib/catalog-photos.mjs";
+import { assertSafePhotoSnapshot, fetchCatalogPhotos } from "./lib/catalog-photos.mjs";
 
 function requiredEnv(name) {
   const value = process.env[name]?.trim();
@@ -12,6 +12,17 @@ const rows = await fetchCatalogPhotos({
   apiUrl: requiredEnv("PRODUCT_CATALOG_API_URL"),
   imageOrigin: requiredEnv("PRODUCT_IMAGE_ORIGIN"),
 });
+const countResponse = await fetch(`${supabaseUrl}/rest/v1/product_images?select=product_id`, {
+  method: "HEAD",
+  headers: {
+    apikey: serviceRoleKey,
+    Authorization: `Bearer ${serviceRoleKey}`,
+    Prefer: "count=exact",
+  },
+});
+if (!countResponse.ok) throw new Error(`Contagem atual de fotos indisponivel (${countResponse.status}).`);
+const countMatch = String(countResponse.headers.get("content-range") || "").match(/\/(\d+)$/);
+assertSafePhotoSnapshot(rows.length, countMatch ? Number(countMatch[1]) : 0);
 const response = await fetch(`${supabaseUrl}/rest/v1/rpc/sync_product_images`, {
   method: "POST",
   headers: {

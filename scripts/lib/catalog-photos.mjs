@@ -85,3 +85,11 @@ export async function fetchCatalogPhotos({ fetchImpl = fetch, apiUrl, imageOrigi
   if (!unique.size) throw new Error("Catalogo nao retornou fotos validas.");
   return [...unique.values()];
 }
+
+export function assertSafePhotoSnapshot(incomingCount, storedCount) {
+  const incoming = Number(incomingCount || 0);
+  const stored = Number(storedCount || 0);
+  if (stored > 0 && incoming < Math.floor(stored * 0.8)) {
+    throw new Error("Catalogo de fotos veio incompleto; as referencias anteriores foram mantidas.");
+  }
+}

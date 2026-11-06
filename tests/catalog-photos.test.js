@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fetchCatalogPhotos, normalizePhotoRecord } from "../scripts/lib/catalog-photos.mjs";
+import { assertSafePhotoSnapshot, fetchCatalogPhotos, normalizePhotoRecord } from "../scripts/lib/catalog-photos.mjs";
 
 const origin = "https://catalogo.example";
 
@@ -36,4 +36,9 @@ test("pagina e consolida fotos repetidas do catalogo", async () => {
   const rows = await fetchCatalogPhotos({ fetchImpl, apiUrl: `${origin}/api/catalog/products`, imageOrigin: origin });
   assert.equal(calls.length, 2);
   assert.deepEqual(rows.map((row) => row.code), ["1", "2"]);
+});
+
+test("preserva o snapshot anterior quando a origem vem muito reduzida", () => {
+  assert.doesNotThrow(() => assertSafePhotoSnapshot(1_900, 2_000));
+  assert.throws(() => assertSafePhotoSnapshot(1_000, 2_000), /vieram mantidas|foram mantidas|incompleto/);
 });
