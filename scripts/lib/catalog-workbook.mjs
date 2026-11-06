@@ -42,6 +42,19 @@ export function finiteNumber(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+export function deduplicateStockRows(rows, sourceName = "planilha") {
+  const unique = new Map();
+  for (const row of rows) {
+    const key = `${row.origin_code}|${row.code}`;
+    const existing = unique.get(key);
+    if (existing && existing.quantity !== row.quantity) {
+      throw new Error(`${sourceName}: estoques conflitantes para o mesmo produto e filial.`);
+    }
+    unique.set(key, row);
+  }
+  return [...unique.values()];
+}
+
 function sheetMatrix(XLSX, bytes, sheetName, required = true) {
   const workbook = XLSX.read(bytes, {
     type: bytes instanceof ArrayBuffer ? "array" : "buffer",
@@ -216,10 +229,11 @@ export function parsePortalWorkbook(XLSX, bytes, name, maxRows = 50_000) {
     priceByProductAndTable.set(key, row);
   }
   const filteredPrices = [...priceByProductAndTable.values()];
+  const uniqueStock = deduplicateStockRows(stock, name);
   const datasets = [
     { kind: "PRODUTOS", rows: productRows },
     { kind: "PRECOS", rows: filteredPrices },
-    { kind: "ESTOQUE", rows: stock },
+    { kind: "ESTOQUE", rows: uniqueStock },
   ];
 
   for (const dataset of datasets) {
