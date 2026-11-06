@@ -51,24 +51,16 @@ npm test
 npm run build
 ```
 
-## Publicar no GitHub Pages
+## Publicação no GitHub Pages
 
-Destino aprovado para preparação: `https://debasistema-max.github.io/`.
+Portal publicado em `https://debasistema-max.github.io/` pelo workflow manual
+`.github/workflows/pages.yml`. O repositório público é exclusivo do DebaPortal,
+o HTTPS está obrigatório e cada nova publicação continua dependendo de um
+disparo manual do workflow.
 
-O repositório `debasistema-max/debasistema-max.github.io` está temporariamente
-privado para impedir a publicação automática do site de usuário. O executor sob
-demanda funciona nesse estado. Tornar o repositório público publicará a URL raiz
-automaticamente e exige aprovação final.
-
-1. Reautentique a conta `debasistema-max` no GitHub CLI ou no conector autorizado.
-2. Confirme que o repositório `debasistema-max.github.io` continua privado e reservado para este projeto.
-3. Copie o conteúdo desta pasta para a raiz do repositório, sem incluir
-   `.env.local`, `node_modules` ou `dist`.
-4. Configure no repositório as variáveis `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` e `VITE_CNPJ_FUNCTION_URL`.
-5. Somente após aprovação, torne o repositório público e execute manualmente o workflow de Pages.
-6. Confirme HTTPS, a URL raiz e a proteção do ambiente `github-pages`.
-
-Não há comando de publicação automática executado por este projeto local.
+O build usa apenas as variáveis públicas `VITE_SUPABASE_URL`,
+`VITE_SUPABASE_ANON_KEY` e `VITE_CNPJ_FUNCTION_URL`. Credenciais administrativas,
+tokens Microsoft, planilhas e arquivos gerados não são publicados.
 
 O roteiro completo, incluindo Supabase e CORS, está em
 `docs/PUBLICACAO_GITHUB.md`.

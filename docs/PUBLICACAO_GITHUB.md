@@ -1,24 +1,24 @@
 # Publicação do DebaPortal no GitHub Pages
 
-Destino preparado: `https://debasistema-max.github.io/`.
+Destino publicado: `https://debasistema-max.github.io/`.
 
-O repositório foi criado e está temporariamente privado. O executor remoto de
-sincronização já funciona nesse estado. A publicação do frontend continua
-dependente de autorização final.
+Primeira publicação concluída em 6 de novembro de 2026. O repositório é público,
+o Pages usa GitHub Actions e o HTTPS está obrigatório. Novos deploys continuam
+manuais pelo workflow `pages.yml`.
 
-## 1. Verificações antes da criação
+## 1. Estado da publicação
 
-1. Abra `https://github.com/debasistema-max/debasistema-max.github.io` e confirme
-   que o repositório continua privado.
-2. Confirme que `https://debasistema-max.github.io/` permanece indisponível.
-3. Reautentique o GitHub CLI na conta correta:
+1. Repositório: `debasistema-max/debasistema-max.github.io`.
+2. URL pública: `https://debasistema-max.github.io/`.
+3. Origem do Pages: GitHub Actions.
+4. Para uma nova publicação, reautentique o GitHub CLI na conta correta:
 
    ```powershell
    gh auth login -h github.com
    gh auth status
    ```
 
-4. Não utilize o repositório do CRM como destino do portal.
+5. Não utilize o repositório do CRM como destino do portal.
 
 ## 2. Repositório independente
 
@@ -31,8 +31,8 @@ debasistema-max.github.io
 O conteúdo de `debaportal` fica na raiz desse repositório. Não envie
 `.env.local`, `node_modules`, `dist`, planilhas ou dados comerciais.
 
-Mantenha o repositório privado durante a preparação. Por usar o nome especial de
-site do usuário, torná-lo público pode ativar o Pages automaticamente.
+O repositório é público por exigência da hospedagem gratuita utilizada. Não
+inclua arquivos comerciais, planilhas, segredos ou artefatos gerados.
 
 ## 3. Configurar o Supabase no GitHub
 
@@ -47,13 +47,12 @@ VITE_CNPJ_FUNCTION_URL=https://SEU-PROJETO.supabase.co/functions/v1/consulta-cnp
 
 Não configure `service_role`, token Microsoft ou client secret no GitHub Pages.
 
-## 4. Configurar Pages e aprovação
+## 4. Publicar uma nova versão
 
-1. Em **Settings → Pages**, selecione **GitHub Actions** como origem.
-2. Em **Settings → Environments → github-pages**, configure aprovação manual se
-   a conta/plano permitir revisores obrigatórios.
-3. Revise o workflow `.github/workflows/pages.yml`.
-4. Autorize o primeiro envio para `main` somente depois dos testes de homologação.
+1. Revise as alterações na branch `main`.
+2. Execute os testes locais.
+3. Abra **Actions → Publicar DebaPortal no GitHub Pages → Run workflow**.
+4. Aguarde os jobs `test-build` e `deploy` concluírem com sucesso.
 
 O workflow executará `npm ci`, `npm test` e `npm run build` antes do deploy. O
 frontend usa rotas por hash e caminhos relativos, compatíveis com a URL raiz.
