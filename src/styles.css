@@ -212,6 +212,12 @@ svg { display: block; width: 22px; height: 22px; }
 .shortcut-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .shortcut-row button { border: 1px solid var(--slate-300); border-radius: 999px; background: #fff; color: var(--slate-700); padding: 8px 13px; font-size: .76rem; font-weight: 700; }
 .shortcut-row button:hover { border-color: var(--blue-600); color: var(--blue-600); }
+.shortcut-row button.active { border-color: var(--navy-900); background: var(--navy-900); color: #fff; }
+.list-selection-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 0 0 14px; border: 1px solid var(--slate-200); border-radius: 12px; background: #fff; padding: 11px 13px; }
+.list-selection-bar > span { color: var(--slate-700); font-size: .8rem; }
+.list-selection-bar > div { display: flex; flex-wrap: wrap; gap: 7px; }
+.list-product-select { display: flex; align-items: center; gap: 8px; margin-top: 12px; border-radius: 9px; background: var(--blue-100); color: var(--navy-800); padding: 10px; font-size: .76rem; }
+.list-product-select input { flex: 0 0 auto; width: 17px; height: 17px; margin: 0; }
 .document-list { overflow: hidden; padding: 8px; }
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }
@@ -318,6 +324,8 @@ tbody tr:last-child td { border-bottom: 0; }
   .full-field { grid-column: 1; }
   .input-action { grid-template-columns: 1fr; }
   .product-actions { flex-direction: column; }
+  .list-selection-bar { align-items: stretch; flex-direction: column; }
+  .list-selection-bar > div { display: grid; grid-template-columns: 1fr; }
   .document-list { padding: 0; border: 0; background: transparent; box-shadow: none; }
   table, thead, tbody, tr, th, td { display: block; }
   thead { display: none; }

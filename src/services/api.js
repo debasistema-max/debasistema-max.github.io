@@ -137,6 +137,34 @@ class SupabaseApi {
     return { items: rows.map(normalizeProduct), total: Number(data?.total ?? rows[0]?.total_count ?? rows.length) };
   }
 
+  async searchAllProducts(params, maxItems = 10000) {
+    const pageSize = 100;
+    const first = await this.searchProducts({ ...params, page: 1, pageSize });
+    if (first.total > maxItems) throw new Error(`A lista excede o limite de ${maxItems.toLocaleString('pt-BR')} itens.`);
+    const items = [...first.items];
+    const totalPages = Math.ceil(first.total / pageSize);
+    for (let start = 2; start <= totalPages; start += 5) {
+      const pages = Array.from({ length: Math.min(5, totalPages - start + 1) }, (_, index) => start + index);
+      const results = await Promise.all(pages.map((page) => this.searchProducts({ ...params, page, pageSize })));
+      results.forEach((result) => items.push(...result.items));
+    }
+    return items;
+  }
+
+  async getCatalogFilterOptions() {
+    const rows = [];
+    for (let from = 0; from < 10000; from += 1000) {
+      const { data, error } = await this.client.from('products')
+        .select('category,product_line').eq('active', true).range(from, from + 999);
+      if (error) throw error;
+      rows.push(...(data || []));
+      if (!data || data.length < 1000) break;
+    }
+    const values = (key) => [...new Set(rows.map((row) => String(row[key] || '').trim()).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    return { categories: values('category'), lines: values('product_line') };
+  }
+
   async saveDocument(type, draft, items, context) {
     const { data, error } = await this.client.rpc('save_commercial_document', {
       document_payload: {
@@ -358,6 +386,14 @@ class DemoApi {
       })),
       total: filtered.length
     };
+  }
+  async searchAllProducts(params) {
+    const result = await this.searchProducts({ ...params, page: 1, pageSize: 10000 });
+    return result.items;
+  }
+  async getCatalogFilterOptions() {
+    const values = (key) => [...new Set(demoProducts.map((row) => row[key]).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    return { categories: values('category'), lines: values('product_line') };
   }
   async saveDocument(type, draft, items, context) {
     const total = items.reduce((sum, item) => sum + item.quantity * item.product.price, 0);

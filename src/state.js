@@ -19,6 +19,7 @@ export const state = {
   originCode: restored.originCode || 'SP',
   priceTableId: restored.priceTableId || '',
   priceTables: [],
+  catalogOptions: { categories: [], lines: [] },
   lastSync: null,
   products: [],
   productTotal: 0,
@@ -26,6 +27,8 @@ export const state = {
   pageSize: 20,
   query: '',
   filters: { category: '', line: '', inStockOnly: false },
+  listMode: 'all',
+  listSelection: new Map(),
   carts: { order: [], quotation: [] },
   documentDrafts: {
     order: { cnpj: '', legalName: '', tradeName: '', clientState: '', notes: '' },

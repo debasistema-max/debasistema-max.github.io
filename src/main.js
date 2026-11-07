@@ -208,10 +208,14 @@ function renderHome() {
     <section class="status-strip"><div><span>Tabela atual</span><strong>${escapeHtml(currentTableName())}</strong></div><div><span>Destino / origem</span><strong>${state.destinationState} / ${state.originCode}</strong></div><div><span>Dados atualizados</span><strong>${escapeHtml(formatDateTime(state.lastSync?.finished_at || state.lastSync?.started_at))}</strong></div></section>`;
 }
 
+function filterOptions(values, selected, emptyLabel) {
+  return `<option value="">${emptyLabel}</option>${values.map((value) => `<option value="${escapeHtml(value)}" ${value === selected ? 'selected' : ''}>${escapeHtml(value)}</option>`).join('')}`;
+}
+
 function searchControls(extra = '') {
   return `<section class="search-panel">
     <label class="search-field"><span class="sr-only">Pesquisar produtos</span>${icon('item')}<input id="product-query" value="${escapeHtml(state.query)}" placeholder="Código, descrição, veículo, modelo, aplicação ou sinônimo"><button type="button" data-action="search-products">Buscar</button></label>
-    <div class="filter-row"><label>Categoria<input data-filter="category" value="${escapeHtml(state.filters.category)}" placeholder="Todas"></label><label>Linha<input data-filter="line" value="${escapeHtml(state.filters.line)}" placeholder="Todas"></label><label class="check-field"><input type="checkbox" data-filter="inStockOnly" ${state.filters.inStockOnly ? 'checked' : ''}> Somente disponíveis</label>${extra}</div>
+    <div class="filter-row"><label>Categoria<select data-filter="category">${filterOptions(state.catalogOptions.categories, state.filters.category, 'Todas as categorias')}</select></label><label>Linha<select data-filter="line">${filterOptions(state.catalogOptions.lines, state.filters.line, 'Todas as linhas')}</select></label><label>Disponibilidade<select data-filter="inStockOnly"><option value="false" ${!state.filters.inStockOnly ? 'selected' : ''}>Todos os itens</option><option value="true" ${state.filters.inStockOnly ? 'selected' : ''}>Somente disponíveis</option></select></label>${extra}</div>
   </section>`;
 }
 
@@ -241,7 +245,7 @@ function productCard(product, mode, cartType) {
     <p>${escapeHtml(product.applications.join(' · ') || 'Aplicação não informada')}</p>
     <div class="product-tags"><span>${escapeHtml(product.category || 'Sem categoria')}</span><span>${escapeHtml(product.product_line || 'Sem linha')}</span></div>
     <div class="stock-grid"><div><span>PR</span><strong>${integer(product.stock_pr)}</strong></div><div><span>SP</span><strong>${integer(product.stock_sp)}</strong></div><div class="price"><span>Preço</span><strong>${money(product.price)}</strong></div></div>
-    ${mode === 'list' ? '' : `<div class="product-actions">${mode === 'item' ? `<button class="button button-secondary" data-add-product="${product.id}" data-cart="quotation">+ Cotação</button><button class="button button-primary" data-add-product="${product.id}" data-cart="order">+ Pedido</button>` : `<button class="button button-primary button-full" data-add-product="${product.id}" data-cart="${cartType}">Adicionar</button>`}</div>`}
+    ${mode === 'list' ? (state.listMode === 'custom' ? `<label class="list-product-select"><input type="checkbox" data-list-product="${product.id}" ${state.listSelection.has(product.id) ? 'checked' : ''}> Incluir na lista personalizada</label>` : '') : `<div class="product-actions">${mode === 'item' ? `<button class="button button-secondary" data-add-product="${product.id}" data-cart="quotation">+ Cotação</button><button class="button button-primary" data-add-product="${product.id}" data-cart="order">+ Pedido</button>` : `<button class="button button-primary button-full" data-add-product="${product.id}" data-cart="${cartType}">Adicionar</button>`}</div>`}
   </article>`;
 }
 
@@ -327,9 +331,14 @@ function cartMarkup(type, cart) {
 }
 
 function renderLists() {
-  const actions = `<button class="button button-secondary" data-action="export-list" data-format="pdf" ${!state.products.length ? 'disabled' : ''}>Exportar PDF</button><button class="button button-primary" data-action="export-list" data-format="xlsx" ${!state.products.length ? 'disabled' : ''}>Exportar Excel</button>`;
+  const custom = state.listMode === 'custom';
+  const categoryPending = state.listMode === 'category' && !state.filters.category;
+  const exportDisabled = state.busy || (custom ? state.listSelection.size === 0 : state.productTotal === 0 || categoryPending);
+  const actions = `<button class="button button-secondary" data-action="export-list" data-format="pdf" ${exportDisabled ? 'disabled' : ''}>Exportar PDF</button><button class="button button-primary" data-action="export-list" data-format="xlsx" ${exportDisabled ? 'disabled' : ''}>Exportar Excel</button>`;
+  const selection = custom ? `<section class="list-selection-bar"><span><strong>${integer(state.listSelection.size)}</strong> produto(s) selecionado(s)</span><div><button class="button button-secondary button-small" data-action="select-visible-products">Selecionar esta página</button><button class="button button-ghost button-small" data-action="clear-list-selection" ${state.listSelection.size ? '' : 'disabled'}>Limpar seleção</button></div></section>` : '';
+  const guidance = categoryPending ? '<div class="notice notice-warn">Escolha uma categoria para gerar a lista.</div>' : '';
   return `${pageHeader('Exportação', 'Listas comerciais', 'Filtre a lista e gere o arquivo no navegador. O arquivo não é armazenado no Supabase.', actions)}
-    <div class="shortcut-row"><button data-list-shortcut="all">Lista completa</button><button data-list-shortcut="stock">Somente disponíveis</button><button data-list-shortcut="category">Por categoria</button><button data-list-shortcut="custom">Personalizada</button></div>${searchControls()}${productResults('list', '')}`;
+    <div class="shortcut-row"><button class="${state.listMode === 'all' ? 'active' : ''}" data-list-shortcut="all">Lista completa</button><button class="${state.listMode === 'stock' ? 'active' : ''}" data-list-shortcut="stock">Somente disponíveis</button><button class="${state.listMode === 'category' ? 'active' : ''}" data-list-shortcut="category">Por categoria</button><button class="${custom ? 'active' : ''}" data-list-shortcut="custom">Personalizada</button></div>${guidance}${searchControls()}${selection}${productResults('list', '')}`;
 }
 
 function renderDocuments() {
@@ -403,9 +412,10 @@ function renderAdmin() {
 function updateView() { renderShell(); }
 
 async function loadAuthenticatedContext() {
-  const [profile, context] = await Promise.all([api.getProfile(), api.loadContext()]);
+  const [profile, context, catalogOptions] = await Promise.all([api.getProfile(), api.loadContext(), api.getCatalogFilterOptions()]);
   state.profile = profile;
   state.priceTables = context.priceTables;
+  state.catalogOptions = catalogOptions;
   state.lastSync = context.lastSync;
   if (!state.priceTables.some((table) => table.id === state.priceTableId)) {
     const match = state.priceTables.find((table) => table.destination_state === state.destinationState && table.origin_code === state.originCode);
@@ -473,7 +483,7 @@ async function initialize() {
       if (needsPasswordSetup) { renderPasswordSetup(); return; }
       try { await loadAuthenticatedContext(); renderShell(); }
       catch (error) { setToast(error.message || 'Perfil sem acesso.', 'error'); await api.signOut(); }
-    } else { clearPhotoCache(); state.profile = null; renderLogin(); }
+    } else { clearPhotoCache(); state.listSelection.clear(); state.profile = null; renderLogin(); }
   });
 }
 
@@ -557,10 +567,20 @@ root.addEventListener('click', async (event) => {
   if (action === 'photo-zoom-in') { applyPhotoZoom(photoZoom + .5); return; }
   if (action === 'photo-zoom-out') { applyPhotoZoom(photoZoom - .5); return; }
   if (action === 'photo-zoom-reset') { applyPhotoZoom(1); return; }
+  if (action === 'select-visible-products') {
+    state.products.forEach((product) => state.listSelection.set(product.id, product));
+    setToast(`${state.products.length} produto(s) desta página selecionado(s).`, 'success');
+    updateView(); return;
+  }
+  if (action === 'clear-list-selection') { state.listSelection.clear(); updateView(); return; }
   if (action === 'dismiss-toast') { state.toast = null; updateView(); return; }
   if (action === 'toggle-nav') { document.querySelector('.side-nav')?.classList.toggle('open'); return; }
-  if (action === 'sign-out') { clearPhotoCache(); await api.signOut(); return; }
-  if (action === 'search-products') { state.query = document.querySelector('#product-query')?.value.trim() || ''; state.productPage = 1; await refreshProducts(); return; }
+  if (action === 'sign-out') { clearPhotoCache(); state.listSelection.clear(); await api.signOut(); return; }
+  if (action === 'search-products') {
+    state.query = document.querySelector('#product-query')?.value.trim() || '';
+    if (state.route === 'lists' && state.listMode !== 'custom') state.listMode = 'filtered';
+    state.productPage = 1; await refreshProducts(); return;
+  }
   const pageButton = event.target.closest('[data-page]');
   if (pageButton && !pageButton.disabled) { state.productPage = Number(pageButton.dataset.page); await refreshProducts(); return; }
   const addButton = event.target.closest('[data-add-product]');
@@ -587,7 +607,22 @@ root.addEventListener('click', async (event) => {
   if (action === 'export-current') { await handleExportCurrent(event.target.closest('[data-type]').dataset.type, event.target.closest('[data-format]').dataset.format); return; }
   if (action === 'export-list') { await handleListExport(event.target.closest('[data-format]').dataset.format); return; }
   const shortcut = event.target.closest('[data-list-shortcut]')?.dataset.listShortcut;
-  if (shortcut) { state.filters.inStockOnly = shortcut === 'stock'; if (shortcut === 'all') state.filters = { category: '', line: '', inStockOnly: false }; state.productPage = 1; await refreshProducts(); return; }
+  if (shortcut) {
+    state.listMode = shortcut;
+    if (shortcut === 'all') {
+      state.query = '';
+      state.filters = { category: '', line: '', inStockOnly: false };
+    } else if (shortcut === 'stock') {
+      state.query = '';
+      state.filters = { category: '', line: '', inStockOnly: true };
+    } else if (shortcut === 'category') {
+      state.query = '';
+      state.filters.line = '';
+      state.filters.inStockOnly = false;
+      if (!state.filters.category) setToast('Escolha a categoria desejada no filtro.', 'info');
+    }
+    state.productPage = 1; await refreshProducts(); return;
+  }
   const convertButton = event.target.closest('[data-convert]');
   if (convertButton) {
     if (!confirm('Converter esta cotação em pedido? Preços e disponibilidade serão validados novamente.')) return;
@@ -631,10 +666,23 @@ root.addEventListener('change', async (event) => {
       const match = state.priceTables.find((table) => table.destination_state === state.destinationState && table.origin_code === state.originCode);
       state.priceTableId = match?.id || '';
     }
+    state.listSelection.clear();
     persistSessionState(); state.productPage = 1; await refreshProducts(); return;
   }
   const filter = event.target.dataset.filter;
-  if (filter) { state.filters[filter] = event.target.type === 'checkbox' ? event.target.checked : event.target.value; state.productPage = 1; await refreshProducts(); return; }
+  if (filter) {
+    state.filters[filter] = filter === 'inStockOnly' ? event.target.value === 'true' : event.target.value;
+    if (state.route === 'lists' && state.listMode !== 'custom') state.listMode = filter === 'category' && event.target.value ? 'category' : 'filtered';
+    state.productPage = 1; await refreshProducts(); return;
+  }
+  const listProductId = event.target.dataset.listProduct;
+  if (listProductId) {
+    const product = state.products.find((item) => item.id === listProductId);
+    if (event.target.checked && product) state.listSelection.set(product.id, product);
+    else state.listSelection.delete(listProductId);
+    updateView();
+    return;
+  }
   if (event.target.id === 'import-file') {
     try {
       const file = event.target.files?.[0];
@@ -710,9 +758,36 @@ async function handleExportCurrent(type, format) {
   format === 'pdf' ? exportPdf(payload) : exportExcel(payload);
 }
 async function handleListExport(format) {
-  const { exportExcel, exportPdf } = await import('./lib/exporters.js');
-  const payload = { title: 'Lista comercial', items: state.products, context: { destinationState: state.destinationState, originCode: state.originCode, updatedAt: formatDateTime(state.lastSync?.finished_at || state.lastSync?.started_at) } };
-  format === 'pdf' ? exportPdf(payload) : exportExcel(payload);
+  if (state.listMode === 'category' && !state.filters.category) {
+    setToast('Escolha uma categoria antes de exportar.', 'error'); updateView(); return;
+  }
+  state.busy = true; updateView();
+  try {
+    const items = state.listMode === 'custom'
+      ? [...state.listSelection.values()]
+      : await api.searchAllProducts({
+        query: state.query,
+        destinationState: state.destinationState,
+        originCode: state.originCode,
+        priceTableId: state.priceTableId,
+        category: state.filters.category,
+        line: state.filters.line,
+        inStockOnly: state.filters.inStockOnly
+      });
+    if (!items.length) throw new Error('Nenhum produto corresponde aos filtros selecionados.');
+    const { exportExcel, exportPdf } = await import('./lib/exporters.js');
+    const titleSuffix = state.listMode === 'custom' ? 'personalizada'
+      : state.filters.category ? state.filters.category
+      : state.filters.line ? state.filters.line
+      : state.filters.inStockOnly ? 'disponíveis' : 'completa';
+    const payload = { title: `Lista comercial - ${titleSuffix}`, items, context: { destinationState: state.destinationState, originCode: state.originCode, updatedAt: formatDateTime(state.lastSync?.finished_at || state.lastSync?.started_at) } };
+    format === 'pdf' ? exportPdf(payload) : exportExcel(payload);
+    setToast(`${integer(items.length)} produto(s) exportado(s).`, 'success');
+  } catch (error) {
+    setToast(error.message || 'Não foi possível gerar a lista.', 'error');
+  } finally {
+    state.busy = false; updateView();
+  }
 }
 
 async function handleSavedDocumentExport(id, format) {
@@ -748,7 +823,12 @@ async function handleImport() {
     const result = await api.importRows(pendingImport.kind, pendingImport.fileName, rows);
     if (result?.ok === false) throw new Error(result.error || 'O lote foi rejeitado.');
     setToast(`Importação concluída: ${result.rows_applied ?? result.accepted ?? rows.length} linha(s) aceita(s).`, 'success');
-    pendingImport = null; const context = await api.loadContext(); state.lastSync = context.lastSync; await refreshProducts(false);
+    pendingImport = null;
+    const [context, catalogOptions] = await Promise.all([api.loadContext(), api.getCatalogFilterOptions()]);
+    state.lastSync = context.lastSync;
+    state.catalogOptions = catalogOptions;
+    state.listSelection.clear();
+    await refreshProducts(false);
   }
   catch (error) { setToast(error.message || 'Falha na importação.', 'error'); }
   finally { state.busy = false; updateView(); }
@@ -762,8 +842,10 @@ async function pollDriveSync(jobId) {
     if (state.adminSummary) state.adminSummary.syncJob = job;
     updateView();
     if (job.status === 'CONCLUIDO') {
-      const context = await api.loadContext();
+      const [context, catalogOptions] = await Promise.all([api.loadContext(), api.getCatalogFilterOptions()]);
       state.lastSync = context.lastSync;
+      state.catalogOptions = catalogOptions;
+      state.listSelection.clear();
       await refreshProducts(false);
       setToast('Sincronização concluída.', 'success');
       updateView();

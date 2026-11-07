@@ -67,4 +67,15 @@ describe('contratos de autorização', () => {
     assert.match(edgeFunction, /Cache-Control.*private/);
     assert.doesNotMatch(frontend, /PRODUCT_IMAGE_ORIGIN|uploads\/products/);
   });
+
+  it('gera listas completas paginadas e permite seleção personalizada', () => {
+    const main = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+    const api = readFileSync(new URL('../src/services/api.js', import.meta.url), 'utf8');
+    assert.match(main, /data-list-product/);
+    assert.match(main, /state\.listSelection/);
+    assert.match(main, /api\.searchAllProducts/);
+    assert.match(api, /async searchAllProducts\(params/);
+    assert.match(api, /select\('category,product_line'\)\.eq\('active', true\)/);
+    assert.doesNotMatch(api, /select\('category,product_line,price/);
+  });
 });
