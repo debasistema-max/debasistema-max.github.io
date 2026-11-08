@@ -19,7 +19,7 @@ function normalizeProduct(row) {
     applications: Array.isArray(row.applications) ? row.applications : [row.application || row.aplicacao || ''].filter(Boolean),
     category: row.category || row.categoria || '',
     product_line: row.product_line || row.linha || '',
-    price: Number(row.price ?? row.preco ?? 0),
+    price: nullableNumber(row.price ?? row.preco),
     stock_pr: nullableNumber(row.stock_pr ?? row.estoque_pr),
     stock_sp: nullableNumber(row.stock_sp ?? row.estoque_sp),
     stock_origin: nullableNumber(row.stock_origin ?? row.estoque_origem),

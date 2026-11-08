@@ -7,6 +7,7 @@ describe('regras de apresentação', () => {
     assert.equal(stockLevel(51).key, 'high');
     assert.equal(stockLevel(50).key, 'low');
     assert.equal(stockLevel(1).key, 'low');
+    assert.equal(stockLevel(1).label, 'Disponível');
     assert.equal(stockLevel(0).key, 'none');
   assert.equal(stockLevel(null).key, 'unknown');
   assert.equal(integer(null), '—');

@@ -2,6 +2,7 @@ import './styles.css';
 import { api } from './services/api.js';
 import { config, hasSupabaseConfig } from './config.js';
 import { formatCnpj, isValidCnpj, lookupCnpj } from './lib/cnpj.js';
+import { allowedOrigins, choosePriceTable, resolveCommercialContext } from './lib/commercial-context.js';
 import { state, navigate, persistSessionState, setToast } from './state.js';
 import { STATES, escapeHtml, formatDateTime, integer, money, onlyDigits, stockLevel } from './lib/utils.js';
 
@@ -173,9 +174,11 @@ function syncWarning() {
 
 function contextBar() {
   const filteredTables = state.priceTables.filter((table) => (!table.destination_state || table.destination_state === state.destinationState) && (!table.origin_code || table.origin_code === state.originCode));
+  const origins = allowedOrigins(state.priceTables, state.destinationState);
+  const originOptions = origins.length ? origins : [state.originCode].filter(Boolean);
   return `<section class="context-bar" aria-label="Contexto comercial">
     <label>Destino<select data-context="destinationState">${stateOptions(state.destinationState)}</select></label>
-    <label>Origem<select data-context="originCode"><option value="PR" ${state.originCode === 'PR' ? 'selected' : ''}>PR</option><option value="SP" ${state.originCode === 'SP' ? 'selected' : ''}>SP</option></select></label>
+    <label>Filial de envio<select data-context="originCode" ${originOptions.length ? '' : 'disabled'}>${originOptions.map((origin) => `<option value="${escapeHtml(origin)}" ${state.originCode === origin ? 'selected' : ''}>${escapeHtml(origin)}</option>`).join('')}</select></label>
     <label class="context-table">Tabela<select data-context="priceTableId"><option value="">Selecione</option>${filteredTables.map((table) => `<option value="${table.id}" ${state.priceTableId === table.id ? 'selected' : ''}>${escapeHtml(table.name)} · v${escapeHtml(table.version)}</option>`).join('')}</select></label>
     <div class="context-sync"><span>Última atualização</span><strong>${escapeHtml(formatDateTime(state.lastSync?.finished_at || state.lastSync?.started_at))}</strong></div>
   </section>`;
@@ -236,6 +239,7 @@ function productResults(mode, cartType) {
 
 function productCard(product, mode, cartType) {
   const level = stockLevel(product.stock_origin);
+  const price = product.price === null ? 'Sem preço' : money(product.price);
   return `<article class="product-card">
     <button class="product-photo" type="button" data-product-photo="${escapeHtml(product.code)}" data-photo-label="${escapeHtml(product.description)}" aria-label="Ampliar foto de ${escapeHtml(product.description)}" disabled>
       <span data-photo-placeholder>Carregando foto…</span>
@@ -244,7 +248,7 @@ function productCard(product, mode, cartType) {
     <h3>${escapeHtml(product.description)}</h3>
     <p>${escapeHtml(product.applications.join(' · ') || 'Aplicação não informada')}</p>
     <div class="product-tags"><span>${escapeHtml(product.category || 'Sem categoria')}</span><span>${escapeHtml(product.product_line || 'Sem linha')}</span></div>
-    <div class="stock-grid"><div><span>PR</span><strong>${integer(product.stock_pr)}</strong></div><div><span>SP</span><strong>${integer(product.stock_sp)}</strong></div><div class="price"><span>Preço</span><strong>${money(product.price)}</strong></div></div>
+    <div class="stock-grid"><div class="${state.originCode === 'PR' ? 'stock-selected' : ''}"><span>PR${state.originCode === 'PR' ? ' · envio' : ''}</span><strong>${integer(product.stock_pr)}</strong></div><div class="${state.originCode === 'SP' ? 'stock-selected' : ''}"><span>SP${state.originCode === 'SP' ? ' · envio' : ''}</span><strong>${integer(product.stock_sp)}</strong></div><div class="price ${product.price === null ? 'price-missing' : ''}"><span>Preço</span><strong>${price}</strong></div></div>
     ${mode === 'list' ? (state.listMode === 'custom' ? `<label class="list-product-select"><input type="checkbox" data-list-product="${product.id}" ${state.listSelection.has(product.id) ? 'checked' : ''}> Incluir na lista personalizada</label>` : '') : `<div class="product-actions">${mode === 'item' ? `<button class="button button-secondary" data-add-product="${product.id}" data-cart="quotation">+ Cotação</button><button class="button button-primary" data-add-product="${product.id}" data-cart="order">+ Pedido</button>` : `<button class="button button-primary button-full" data-add-product="${product.id}" data-cart="${cartType}">Adicionar</button>`}</div>`}
   </article>`;
 }
@@ -316,18 +320,19 @@ function renderDocumentBuilder(type) {
   const isOrder = type === 'order';
   const draft = state.documentDrafts[type];
   const cart = state.carts[type];
-  const total = cart.reduce((sum, item) => sum + Number(item.quantity) * Number(item.product.price), 0);
+  const missingPrice = cart.some((item) => item.product.price === null);
+  const total = cart.reduce((sum, item) => sum + Number(item.quantity) * Number(item.product.price || 0), 0);
   return `${pageHeader(isOrder ? 'Operação comercial' : 'Proposta comercial', isOrder ? 'Novo pedido' : 'Nova cotação', isOrder ? 'Confirme cliente, produtos, preço e disponibilidade antes de salvar.' : 'Monte a cotação e converta em pedido após nova validação.', `<button class="button button-secondary" data-route="documents">Ver documentos</button>`)}
     <div class="builder-grid"><section class="panel customer-panel"><div class="section-title"><span>1</span><div><h2>Cliente e condições</h2><p>O CNPJ é consultado, mas não cria cadastro permanente.</p></div></div>
       <div class="form-grid"><label>CNPJ<div class="input-action"><input data-draft="${type}" data-field="cnpj" value="${escapeHtml(formatCnpj(draft.cnpj))}" inputmode="numeric" placeholder="00.000.000/0000-00"><button class="button button-secondary" type="button" data-action="lookup-cnpj" data-type="${type}">Consultar</button></div></label><label>Razão social<input data-draft="${type}" data-field="legalName" value="${escapeHtml(draft.legalName)}"></label><label>Nome fantasia<input data-draft="${type}" data-field="tradeName" value="${escapeHtml(draft.tradeName)}"></label><label>UF do cliente<select data-draft="${type}" data-field="clientState"><option value="">Selecione</option>${stateOptions(draft.clientState)}</select></label><label class="full-field">Observações<textarea data-draft="${type}" data-field="notes" rows="2">${escapeHtml(draft.notes)}</textarea></label></div>
     </section>
     <section class="panel products-panel"><div class="section-title"><span>2</span><div><h2>Produtos</h2><p>Preço pela tabela ${escapeHtml(currentTableName())}.</p></div></div>${renderCatalog('builder', type)}</section>
-    <aside class="panel cart-panel"><div class="section-title"><span>3</span><div><h2>Resumo</h2><p>${cart.length} item(ns)${draft.id ? ' · rascunho salvo' : ''}</p></div></div>${cartMarkup(type, cart)}<div class="cart-total"><span>Total</span><strong>${money(total)}</strong></div><div class="cart-actions"><button class="button button-primary button-full" type="button" data-action="save-document" data-type="${type}">${draft.id ? 'Atualizar rascunho' : (isOrder ? 'Salvar pedido' : 'Salvar cotação')}</button><div><button class="button button-secondary" data-action="export-current" data-format="pdf" data-type="${type}" ${!cart.length ? 'disabled' : ''}>PDF</button><button class="button button-secondary" data-action="export-current" data-format="xlsx" data-type="${type}" ${!cart.length ? 'disabled' : ''}>Excel</button></div><button class="button button-ghost button-full" data-action="reset-document" data-type="${type}">Novo documento</button></div></aside></div>`;
+    <aside class="panel cart-panel"><div class="section-title"><span>3</span><div><h2>Resumo</h2><p>${cart.length} item(ns)${draft.id ? ' · rascunho salvo' : ''}</p></div></div>${cartMarkup(type, cart)}${missingPrice ? '<div class="notice notice-error">Há item sem preço na tabela selecionada.</div>' : ''}<div class="cart-total"><span>Total</span><strong>${missingPrice ? '—' : money(total)}</strong></div><div class="cart-actions"><button class="button button-primary button-full" type="button" data-action="save-document" data-type="${type}" ${missingPrice ? 'disabled' : ''}>${draft.id ? 'Atualizar rascunho' : (isOrder ? 'Salvar pedido' : 'Salvar cotação')}</button><div><button class="button button-secondary" data-action="export-current" data-format="pdf" data-type="${type}" ${!cart.length || missingPrice ? 'disabled' : ''}>PDF</button><button class="button button-secondary" data-action="export-current" data-format="xlsx" data-type="${type}" ${!cart.length || missingPrice ? 'disabled' : ''}>Excel</button></div><button class="button button-ghost button-full" data-action="reset-document" data-type="${type}">Novo documento</button></div></aside></div>`;
 }
 
 function cartMarkup(type, cart) {
   if (!cart.length) return '<div class="empty-cart">Adicione o primeiro item pela busca.</div>';
-  return `<div class="cart-list">${cart.map((item) => `<div class="cart-item"><div><strong>${escapeHtml(item.product.code)}</strong><span>${escapeHtml(item.product.description)}</span><small>${money(item.product.price)} por unidade</small></div><label>Qtd.<input type="number" min="1" step="1" value="${item.quantity}" data-cart-quantity="${item.product.id}" data-cart="${type}"></label><button class="remove-button" type="button" data-remove-product="${item.product.id}" data-cart="${type}" aria-label="Remover">×</button></div>`).join('')}</div>`;
+  return `<div class="cart-list">${cart.map((item) => `<div class="cart-item"><div><strong>${escapeHtml(item.product.code)}</strong><span>${escapeHtml(item.product.description)}</span><small>${item.product.price === null ? 'Sem preço' : `${money(item.product.price)} por unidade`} · ${escapeHtml(state.originCode)}: ${integer(item.product.stock_origin)}</small></div><label>Qtd.<input type="number" min="1" step="1" value="${item.quantity}" data-cart-quantity="${item.product.id}" data-cart="${type}"></label><button class="remove-button" type="button" data-remove-product="${item.product.id}" data-cart="${type}" aria-label="Remover">×</button></div>`).join('')}</div>`;
 }
 
 function renderLists() {
@@ -417,14 +422,16 @@ async function loadAuthenticatedContext() {
   state.priceTables = context.priceTables;
   state.catalogOptions = catalogOptions;
   state.lastSync = context.lastSync;
-  if (!state.priceTables.some((table) => table.id === state.priceTableId)) {
-    const match = state.priceTables.find((table) => table.destination_state === state.destinationState && table.origin_code === state.originCode);
-    const fallback = match || state.priceTables[0];
-    state.priceTableId = fallback?.id || '';
-    if (fallback?.destination_state) state.destinationState = fallback.destination_state;
-    if (fallback?.origin_code) state.originCode = fallback.origin_code;
-    persistSessionState();
+  const resolved = resolveCommercialContext(state.priceTables, state);
+  state.originCode = resolved.originCode;
+  state.priceTableId = resolved.priceTableId;
+  if (!state.priceTableId && state.priceTables[0]) {
+    const fallback = state.priceTables[0];
+    if (fallback.destination_state) state.destinationState = fallback.destination_state;
+    if (fallback.origin_code) state.originCode = fallback.origin_code;
+    state.priceTableId = choosePriceTable(state.priceTables, state.destinationState, state.originCode)?.id || '';
   }
+  persistSessionState();
   await Promise.all([refreshProducts(false), loadDocuments(false)]);
 }
 
@@ -446,6 +453,46 @@ async function refreshProducts(shouldRender = true) {
     state.busy = false;
     if (shouldRender) updateView();
   }
+}
+
+async function revalidateCarts(shouldRender = true) {
+  const cartItems = [...state.carts.order, ...state.carts.quotation];
+  if (!cartItems.length) {
+    if (shouldRender) updateView();
+    return;
+  }
+  const productsByCode = new Map();
+  const codes = [...new Set(cartItems.map((item) => item.product.code).filter(Boolean))];
+  try {
+    for (let start = 0; start < codes.length; start += 5) {
+      const batch = codes.slice(start, start + 5);
+      const results = await Promise.all(batch.map((code) => api.searchProducts({
+        query: code,
+        destinationState: state.destinationState,
+        originCode: state.originCode,
+        priceTableId: state.priceTableId,
+        category: '',
+        line: '',
+        inStockOnly: false,
+        page: 1,
+        pageSize: 100
+      })));
+      results.forEach((result, index) => {
+        const code = batch[index];
+        const exact = result.items.find((product) => String(product.code).toUpperCase() === String(code).toUpperCase());
+        if (exact) productsByCode.set(code, exact);
+      });
+    }
+    for (const type of ['order', 'quotation']) {
+      state.carts[type] = state.carts[type].map((item) => ({
+        ...item,
+        product: productsByCode.get(item.product.code) || { ...item.product, price: null, stock_origin: null }
+      }));
+    }
+  } catch (error) {
+    setToast(error.message || 'Falha ao atualizar preços e estoques do carrinho.', 'error');
+  }
+  if (shouldRender) updateView();
 }
 
 async function loadDocuments(shouldRender = true) {
@@ -663,11 +710,16 @@ root.addEventListener('change', async (event) => {
   if (contextKey) {
     state[contextKey] = event.target.value;
     if (contextKey !== 'priceTableId') {
-      const match = state.priceTables.find((table) => table.destination_state === state.destinationState && table.origin_code === state.originCode);
-      state.priceTableId = match?.id || '';
+      const resolved = resolveCommercialContext(state.priceTables, state);
+      state.originCode = resolved.originCode;
+      state.priceTableId = resolved.priceTableId;
     }
     state.listSelection.clear();
-    persistSessionState(); state.productPage = 1; await refreshProducts(); return;
+    persistSessionState(); state.productPage = 1;
+    await refreshProducts(false);
+    await revalidateCarts(false);
+    if (!state.priceTableId) setToast('Não existe tabela comercial para este destino e filial.', 'error');
+    updateView(); return;
   }
   const filter = event.target.dataset.filter;
   if (filter) {
@@ -736,6 +788,7 @@ async function handleSaveDocument(type) {
   if (!state.priceTableId) { setToast('Selecione uma tabela comercial.', 'error'); updateView(); return; }
   if (!isValidCnpj(draft.cnpj) || !draft.legalName.trim()) { setToast('Consulte e confirme o CNPJ e a razão social.', 'error'); updateView(); return; }
   if (!cart.length) { setToast('Adicione ao menos um item.', 'error'); updateView(); return; }
+  if (cart.some((item) => item.product.price === null)) { setToast('Há item sem preço na tabela selecionada.', 'error'); updateView(); return; }
   if (type === 'order' && cart.some((item) => item.product.stock_origin === null)) { setToast('O estoque da origem selecionada está sem dados. O pedido não pode ser confirmado.', 'error'); updateView(); return; }
   if (type === 'order' && cart.some((item) => item.quantity > item.product.stock_origin)) { setToast('Há item com quantidade acima do estoque da origem selecionada.', 'error'); updateView(); return; }
   state.busy = true; updateView();

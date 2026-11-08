@@ -49,7 +49,7 @@ export function stockLevel(quantity) {
   if (quantity === null || quantity === undefined || quantity === '') return { key: 'unknown', label: 'Sem dados' };
   const value = Number(quantity || 0);
   if (value > 50) return { key: 'high', label: 'Disponível' };
-  if (value > 0) return { key: 'low', label: 'Estoque baixo' };
+  if (value > 0) return { key: 'low', label: 'Disponível' };
   return { key: 'none', label: 'Indisponível' };
 }
 
