@@ -1,4 +1,4 @@
-const ROUTES = ["PR-PR", "SP-SP", "PR-SC"];
+const SOURCE_ROUTES = ["PR-PR", "SP-SP", "PR-SC"];
 const BRANCHES = ["PR", "SP"];
 const FORBIDDEN_BRANDS = new RegExp(
   `\\b(?:${["I", "P", "S"].join("")}(?:\\s+do\\s+Brasil)?|${["Yoko", "mitsu"].join("")}|${["R", "T"].join("\\s*")}\\s*Group)\\b`,
@@ -40,6 +40,30 @@ export function finiteNumber(value) {
     : text.replace(",", ".");
   const parsed = Number(normalized.replace(/[^0-9.+-]/g, "").replace(/\+$/, ""));
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function percentageRate(value) {
+  const parsed = finiteNumber(value);
+  if (parsed === null || parsed < 0) return null;
+  return cleanText(value, 80).includes("%") || parsed > 1 ? parsed / 100 : parsed;
+}
+
+function roundCurrency(value) {
+  return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+}
+
+export function basePlusIpi(baseValue, ipiAmountValue, ipiRateValue) {
+  const base = finiteNumber(baseValue);
+  if (base === null || base <= 0) return null;
+
+  let ipi = finiteNumber(ipiAmountValue);
+  if (ipi === null) {
+    const rate = percentageRate(ipiRateValue);
+    if (rate === null) return null;
+    ipi = base * rate;
+  }
+  if (ipi < 0) return null;
+  return roundCurrency(roundCurrency(base) + roundCurrency(ipi));
 }
 
 export function deduplicateStockRows(rows, sourceName = "planilha") {
@@ -109,6 +133,8 @@ function ensureProduct(store, code) {
       product_line: "",
       synonyms: new Set(),
       applications: new Map(),
+      basePrice: null,
+      ipiRate: null,
     };
     store.set(code, product);
   }
@@ -148,6 +174,8 @@ export function parsePortalWorkbook(XLSX, bytes, name, maxRows = 50_000) {
       const product = ensureProduct(products, code);
       product.description ||= publicText(valueAt(row, matrixHeader.columns, "descricao"));
       product.product_line ||= publicText(valueAt(row, matrixHeader.columns, "marca"), 200);
+      product.basePrice ??= finiteNumber(valueAt(row, matrixHeader.columns, "preco s imp"));
+      product.ipiRate ??= valueAt(row, matrixHeader.columns, "ipi") || null;
       const application = publicText(valueAt(row, matrixHeader.columns, "aplicacao"));
       const year = publicText(valueAt(row, matrixHeader.columns, "ano"), 100);
       addApplication(product, [application, year].filter(Boolean).join(" "));
@@ -166,6 +194,7 @@ export function parsePortalWorkbook(XLSX, bytes, name, maxRows = 50_000) {
       product.category ||= publicText(valueAt(row, sapHeader.columns, "grupo de itens"), 200);
       product.product_line ||= publicText(valueAt(row, sapHeader.columns, "marca"), 200)
         || publicText(valueAt(row, sapHeader.columns, "fabricante"), 200);
+      product.ipiRate ??= valueAt(row, sapHeader.columns, "ipi") || null;
       const model = publicText(valueAt(row, sapHeader.columns, "modelo"), 300);
       const year = publicText(valueAt(row, sapHeader.columns, "ano"), 100);
       addApplication(product, year, model);
@@ -177,7 +206,25 @@ export function parsePortalWorkbook(XLSX, bytes, name, maxRows = 50_000) {
     }
   }
 
-  for (const route of ROUTES) {
+  const fiscalByRouteAndProduct = new Map();
+  {
+    const fiscal = sheetMatrix(XLSX, bytes, "Cálculo Fiscal", false);
+    if (fiscal) {
+      const fiscalHeader = findHeader(fiscal, ["rota", "codigo", "preco s imp", "ipi"], "Cálculo Fiscal");
+      for (const row of fiscal.slice(fiscalHeader.rowIndex + 1)) {
+        const route = publicText(valueAt(row, fiscalHeader.columns, "rota"), 20).toUpperCase();
+        const code = productCode(valueAt(row, fiscalHeader.columns, "codigo"));
+        if (!SOURCE_ROUTES.includes(route) || !code) continue;
+        fiscalByRouteAndProduct.set(`${route}|${code}`, {
+          base: finiteNumber(valueAt(row, fiscalHeader.columns, "preco s imp")),
+          ipi: finiteNumber(valueAt(row, fiscalHeader.columns, "ipi")),
+          final: finiteNumber(valueAt(row, fiscalHeader.columns, "preco final")),
+        });
+      }
+    }
+  }
+
+  for (const route of SOURCE_ROUTES) {
     const sheetName = `LISTA ${route}`;
     const rows = sheetMatrix(XLSX, bytes, sheetName, false);
     if (!rows) continue;
@@ -187,8 +234,17 @@ export function parsePortalWorkbook(XLSX, bytes, name, maxRows = 50_000) {
       if (!code) continue;
       const product = ensureProduct(products, code);
       product.description ||= publicText(valueAt(row, header.columns, "descricao"));
-      const price = finiteNumber(valueAt(row, header.columns, "preco c impostos"));
+      const fiscal = fiscalByRouteAndProduct.get(`${route}|${code}`);
+      const base = fiscal?.base
+        ?? finiteNumber(valueAt(row, header.columns, "preco s imp"))
+        ?? product.basePrice;
+      const price = route === "PR-PR"
+        ? fiscal?.final ?? finiteNumber(valueAt(row, header.columns, "preco c impostos"))
+        : basePlusIpi(base, fiscal?.ipi ?? null, product.ipiRate);
       if (price !== null && price > 0) prices.push({ code, price, price_table_code: route });
+      if (route === "PR-SC" && price !== null && price > 0) {
+        prices.push({ code, price, price_table_code: "PR-SP" });
+      }
     }
   }
 

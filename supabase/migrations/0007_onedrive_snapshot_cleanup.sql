@@ -28,7 +28,7 @@ begin
       set valid_to = clock_timestamp()
       where pp.valid_to is null
         and pp.price_table_id in (
-          select pt.id from public.price_tables pt where pt.code in ('PR-PR','SP-SP','PR-SC')
+          select pt.id from public.price_tables pt where pt.code in ('PR-PR','SP-SP','PR-SC','PR-SP')
         );
     elsif is_onedrive and import_kind_value = 'ESTOQUE' then
       delete from public.branch_stock bs

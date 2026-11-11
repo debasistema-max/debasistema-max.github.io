@@ -4,6 +4,7 @@ import { allowedOrigins, choosePriceTable, resolveCommercialContext, tableSuppor
 
 const tables = [
   { id: 'pr-pr', destination_state: 'PR', origin_code: 'PR', version: 1 },
+  { id: 'pr-sp', destination_state: 'SP', origin_code: 'PR', version: 1 },
   { id: 'sp-sp', destination_state: 'SP', origin_code: 'SP', version: 1 },
   { id: 'pr-sc', destination_state: 'SC', origin_code: 'PR', version: 1 }
 ];
@@ -11,7 +12,12 @@ const tables = [
 describe('contexto comercial', () => {
   it('limita a filial às rotas com preço para o destino', () => {
     assert.deepEqual(allowedOrigins(tables, 'SC'), ['PR']);
-    assert.deepEqual(allowedOrigins(tables, 'SP'), ['SP']);
+    assert.deepEqual(allowedOrigins(tables, 'SP'), ['PR', 'SP']);
+  });
+
+  it('troca a tabela quando muda a filial de envio para SP', () => {
+    assert.equal(choosePriceTable(tables, 'SP', 'PR').id, 'pr-sp');
+    assert.equal(choosePriceTable(tables, 'SP', 'SP').id, 'sp-sp');
   });
 
   it('corrige a filial incompatível e seleciona a tabela válida', () => {

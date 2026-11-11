@@ -1,6 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { deduplicateStockRows, finiteNumber, publicText } from "../scripts/lib/catalog-workbook.mjs";
+import * as XLSX from "xlsx";
+import {
+  basePlusIpi,
+  deduplicateStockRows,
+  finiteNumber,
+  parsePortalWorkbook,
+  percentageRate,
+  publicText,
+} from "../scripts/lib/catalog-workbook.mjs";
 
 test("interpreta estoque com sufixo de quantidade", () => {
   assert.equal(finiteNumber("100+"), 100);
@@ -29,4 +37,56 @@ test("consolida estoque repetido por produto e filial", () => {
     () => deduplicateStockRows([rows[0], { ...rows[0], quantity: 9 }], "catalogo.xlsx"),
     /estoques conflitantes/,
   );
+});
+
+test("normaliza IPI e calcula somente base mais IPI", () => {
+  assert.equal(percentageRate("9,75%"), 0.0975);
+  assert.equal(percentageRate(5), 0.05);
+  assert.equal(percentageRate(0.05), 0.05);
+  assert.equal(percentageRate("1%"), 0.01);
+  assert.equal(percentageRate(""), null);
+  assert.equal(basePlusIpi(232, 22.62, null), 254.62);
+  assert.equal(basePlusIpi(100, null, "10%"), 110);
+});
+
+test("aplica a regra fiscal por rota comercial", () => {
+  const workbook = XLSX.utils.book_new();
+  const addSheet = (name, rows) => {
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(rows), name);
+  };
+
+  addSheet("MATRIZ", [
+    ["CODIGO", "DESCRICAO", "PRECO S/IMP", "IPI"],
+    ["ABC-1", "Produto de teste", 100, "10%"],
+  ]);
+  for (const [route, importedTotal] of [["PR-PR", 130], ["SP-SP", 140], ["PR-SC", 120]]) {
+    addSheet(`LISTA ${route}`, [
+      ["CODIGO", "DESCRICAO", "PRECO S/IMP", "PRECO C/IMPOSTOS"],
+      ["ABC-1", "Produto de teste", 100, importedTotal],
+    ]);
+  }
+  addSheet("Cálculo Fiscal", [
+    ["ROTA", "CODIGO", "PRECO S/IMP", "IPI", "ICMS-ST", "PRECO FINAL"],
+    ["PR-PR", "ABC-1", 100, 10, 20, 130],
+    ["SP-SP", "ABC-1", 100, 10, 30, 140],
+    ["PR-SC", "ABC-1", 100, 10, 10, 120],
+  ]);
+  for (const branch of ["PR", "SP"]) {
+    addSheet(`PORTAL ESTOQUE ${branch}`, [
+      ["CODIGO", "ESTOQUE", "DISP GERAL"],
+      ["ABC-1", 8, 8],
+    ]);
+  }
+
+  const bytes = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+  const { datasets } = parsePortalWorkbook(XLSX, bytes, "teste.xlsx");
+  const priceRows = datasets.find((dataset) => dataset.kind === "PRECOS").rows;
+  const prices = Object.fromEntries(priceRows.map((row) => [row.price_table_code, row.price]));
+
+  assert.deepEqual(prices, {
+    "PR-PR": 130,
+    "SP-SP": 110,
+    "PR-SC": 110,
+    "PR-SP": 110,
+  });
 });

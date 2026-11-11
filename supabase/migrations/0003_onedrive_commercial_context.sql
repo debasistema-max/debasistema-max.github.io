@@ -17,7 +17,8 @@ select route.code, route.name, 1, route.destination_state, branch.id, current_da
 from (values
   ('PR-PR', 'Tabela PR para PR', 'PR', 'PR'),
   ('SP-SP', 'Tabela SP para SP', 'SP', 'SP'),
-  ('PR-SC', 'Tabela PR para SC', 'SC', 'PR')
+  ('PR-SC', 'Tabela PR para SC', 'SC', 'PR'),
+  ('PR-SP', 'Tabela PR para SP', 'SP', 'PR')
 ) as route(code, name, destination_state, origin_code)
 join public.branches branch on branch.code = route.origin_code
 on conflict (code, version) do update

@@ -33,6 +33,8 @@ O frontend não cria automaticamente projetos, usuários ou credenciais.
 
 A fonte atual é a planilha autorizada no OneDrive. No portal online, um ADMIN usa **Sincronizar agora**; o backend cria um link temporário protegido, dispara o executor remoto e acompanha o resultado. Não existe sincronização agendada.
 
+Na sincronização, os preços seguem a rota comercial: PR→PR usa base + IPI + ICMS-ST; PR→SC, PR→SP e SP→SP usam somente base + IPI. A rota PR→SP é derivada da mesma base fiscal PR sem ST da planilha.
+
 O workflow requer os secrets `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` no repositório. O token que dispara o workflow permanece somente nos secrets do Supabase.
 
 Como contingência local, após aplicar `supabase/migrations/0004_service_executor.sql`, valide ou sincronize com:
