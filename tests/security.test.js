@@ -78,4 +78,24 @@ describe('contratos de autorização', () => {
     assert.match(api, /select\('category,product_line'\)\.eq\('active', true\)/);
     assert.doesNotMatch(api, /select\('category,product_line,price/);
   });
+
+  it('mantém a inativação em lote entre sincronizações e oculta os itens comercialmente', () => {
+    const migration = readFileSync(new URL('../supabase/migrations/0010_bulk_product_activation.sql', import.meta.url), 'utf8');
+    const syncMigration = readFileSync(new URL('../supabase/migrations/0009_state_commercial_price_rules.sql', import.meta.url), 'utf8');
+    const main = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+    const api = readFileSync(new URL('../src/services/api.js', import.meta.url), 'utf8');
+    assert.match(migration, /admin_inactive boolean not null default false/);
+    assert.match(migration, /where p\.active and not p\.admin_inactive/);
+    assert.match(migration, /admin_set_products_active\(product_ids uuid\[\], new_active boolean\)/);
+    assert.match(migration, /Apenas administradores podem gerenciar produtos/);
+    assert.doesNotMatch(syncMigration, /admin_inactive\s*=/);
+    assert.match(main, /data-admin-product/);
+    assert.match(main, /Inativar selecionados/);
+    assert.match(main, /Reativar selecionados/);
+    assert.match(api, /admin_list_products/);
+    assert.match(api, /admin_set_products_active/);
+    assert.match(api, /\.eq\('admin_inactive', false\)/);
+    const imageFunction = readFileSync(new URL('../supabase/functions/product-image/index.ts', import.meta.url), 'utf8');
+    assert.match(imageFunction, /\.eq\("admin_inactive", false\)/);
+  });
 });

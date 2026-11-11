@@ -36,6 +36,10 @@ export const state = {
   },
   documents: [],
   adminSummary: null,
+  adminCatalog: {
+    items: [], total: 0, page: 1, pageSize: 50,
+    query: '', status: 'ATIVOS', selection: new Set()
+  },
   busy: false,
   toast: null
 };

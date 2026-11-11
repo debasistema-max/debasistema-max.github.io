@@ -155,7 +155,7 @@ class SupabaseApi {
     const rows = [];
     for (let from = 0; from < 10000; from += 1000) {
       const { data, error } = await this.client.from('products')
-        .select('category,product_line').eq('active', true).range(from, from + 999);
+        .select('category,product_line').eq('active', true).eq('admin_inactive', false).range(from, from + 999);
       if (error) throw error;
       rows.push(...(data || []));
       if (!data || data.length < 1000) break;
@@ -259,6 +259,31 @@ class SupabaseApi {
       { relation: 'Documentos', pretty_size: `${Number(data.documents || 0).toLocaleString('pt-BR')} registros` },
       ...Object.entries(data.tables || {}).sort(([a], [b]) => a.localeCompare(b)).map(([relation, bytes]) => ({ relation, bytes, pretty_size: `${(Number(bytes || 0) / 1024).toFixed(1)} KB` }))
     ];
+  }
+
+  async listAdminProducts({ query = '', status = 'ATIVOS', page = 1, pageSize = 50 } = {}) {
+    const { data, error } = await this.client.rpc('admin_list_products', {
+      search_text: String(query || '').trim(),
+      status_filter: String(status || 'ATIVOS').toUpperCase(),
+      page_number: Number(page || 1),
+      page_size: Number(pageSize || 50)
+    });
+    if (error) throw error;
+    const rows = Array.isArray(data) ? data : [];
+    return {
+      items: rows.map((row) => ({ ...row, id: row.product_id })),
+      total: Number(rows[0]?.total_count || 0)
+    };
+  }
+
+  async setProductsActive(productIds, active) {
+    const ids = [...new Set((productIds || []).filter(Boolean))];
+    const { data, error } = await this.client.rpc('admin_set_products_active', {
+      product_ids: ids,
+      new_active: Boolean(active)
+    });
+    if (error) throw error;
+    return Number(data || 0);
   }
 
   async listProfiles() {
@@ -445,6 +470,19 @@ class DemoApi {
   }
   async importRows(_kind, sourceName, rows) { return { source: sourceName, accepted: rows.length, rejected: 0, demo: true }; }
   async storageSummary() { return [{ relation: 'demo', bytes: 0, pretty_size: '0 bytes', row_count: demoProducts.length }]; }
+  async listAdminProducts({ query = '', status = 'ATIVOS', page = 1, pageSize = 50 } = {}) {
+    const term = String(query || '').trim().toLowerCase();
+    const inactive = String(status).toUpperCase() === 'INATIVOS';
+    const rows = demoProducts.filter((product) => Boolean(product.admin_inactive) === inactive)
+      .filter((product) => !term || `${product.code} ${product.description}`.toLowerCase().includes(term));
+    const start = (Math.max(1, Number(page)) - 1) * Number(pageSize);
+    return { items: rows.slice(start, start + Number(pageSize)).map((row) => ({ ...row, effective_active: !row.admin_inactive })), total: rows.length };
+  }
+  async setProductsActive(productIds, active) {
+    const selected = new Set(productIds || []);
+    demoProducts.forEach((product) => { if (selected.has(product.id)) product.admin_inactive = !active; });
+    return selected.size;
+  }
   async listProfiles() { return [{ id: 'demo-user', email: 'demo@debaportal.local', full_name: 'Demonstração', role: 'ADMIN', active: true, branch_ids: [], price_table_ids: [], created_at: new Date().toISOString() }]; }
   async listBranches() { return [{ id: 'branch-sp', code: 'SP', name: 'Filial SP', state: 'SP', active: true }, { id: 'branch-pr', code: 'PR', name: 'Filial PR', state: 'PR', active: true }]; }
   async createBranch(payload) { return { id: uuid(), ...payload, active: true }; }

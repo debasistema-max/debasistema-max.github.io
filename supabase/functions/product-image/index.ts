@@ -31,7 +31,7 @@ Deno.serve(async (req) => {
       auth: { persistSession: false, autoRefreshToken: false },
     });
     const { data: product, error: productError } = await admin
-      .from("products").select("id").eq("code", code).eq("active", true).maybeSingle();
+      .from("products").select("id").eq("code", code).eq("active", true).eq("admin_inactive", false).maybeSingle();
     if (productError) throw productError;
     if (!product) return jsonResponse(req, { error: "Foto nao encontrada." }, 404);
     const { data: image, error: imageError } = await admin
