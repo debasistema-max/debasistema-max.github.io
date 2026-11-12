@@ -129,10 +129,17 @@ async function secureWorkbookDownload(req: Request, jobId: string, retryFailed: 
 
   const downloadUrl = item["@microsoft.graph.downloadUrl"];
   if (!downloadUrl) throw new Error("Microsoft nao forneceu a URL de download pre-autorizada.");
+  const parsedDownloadUrl = new URL(downloadUrl);
+  const downloadHeaders: Record<string, string> = { Range: "bytes=0-" };
+  if (parsedDownloadUrl.hostname === "my.microsoftpersonalcontent.com") {
+    const temporaryAuthorization = parsedDownloadUrl.searchParams.get("tempauth");
+    if (!temporaryAuthorization) throw new Error("Autorizacao temporaria do OneDrive ausente.");
+    downloadHeaders.Authorization = `Bearer ${temporaryAuthorization}`;
+  }
   const response = await fetchWithRetry(downloadUrl, {
     redirect: "follow",
     cache: "no-store",
-    headers: { Range: "bytes=0-" },
+    headers: downloadHeaders,
   });
   if (!response.ok) {
     const downloadHost = new URL(downloadUrl).hostname.replace(/[^a-z0-9.-]/gi, "");

@@ -104,6 +104,10 @@ describe('contratos de autorização', () => {
     assert.match(syncFunction, /item\["@microsoft\.graph\.downloadUrl"\]/);
     assert.match(syncFunction, /fetchWithRetry\(downloadUrl/);
     assert.match(syncFunction, /Range: "bytes=0-"/);
+    assert.match(syncFunction, /hostname === "my\.microsoftpersonalcontent\.com"/);
+    assert.match(syncFunction, /searchParams\.get\("tempauth"\)/);
+    assert.match(syncFunction, /downloadHeaders\.Authorization = `Bearer \$\{temporaryAuthorization\}`/);
+    assert.doesNotMatch(syncFunction, /downloadHeaders\.Authorization = `Bearer \$\{token\}`/);
     assert.match(syncFunction, /hostname\.replace/);
     assert.match(syncFunction, /RETRYABLE_STATUS = new Set\(\[429, 500, 502, 503, 504\]\)/);
     assert.match(syncFunction, /fetchWithRetry/);
