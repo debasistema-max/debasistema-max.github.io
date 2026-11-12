@@ -39,11 +39,11 @@ async function fetchWithRetry(url: string, init: RequestInit, attempts = 4): Pro
   return response as Response;
 }
 
-async function graphToken(): Promise<string> {
+async function microsoftToken(scope: string): Promise<string> {
   const body = new URLSearchParams({
     client_id: requiredEnv("MS_GRAPH_CLIENT_ID"),
     refresh_token: requiredEnv("MS_GRAPH_REFRESH_TOKEN"),
-    scope: Deno.env.get("MS_GRAPH_SCOPE") || "offline_access Files.Read",
+    scope,
     grant_type: "refresh_token",
   });
   const response = await fetchWithRetry("https://login.microsoftonline.com/consumers/oauth2/v2.0/token", {
@@ -55,6 +55,14 @@ async function graphToken(): Promise<string> {
   const data = await response.json();
   if (!data.access_token) throw new Error("Microsoft nao retornou token de acesso.");
   return String(data.access_token);
+}
+
+async function graphToken(): Promise<string> {
+  return await microsoftToken(Deno.env.get("MS_GRAPH_SCOPE") || "offline_access Files.Read");
+}
+
+async function oneDriveContentToken(): Promise<string> {
+  return await microsoftToken("offline_access OneDrive.ReadOnly");
 }
 
 async function graphJson(url: string, token: string): Promise<Record<string, unknown>> {
@@ -132,7 +140,7 @@ async function secureWorkbookDownload(req: Request, jobId: string, retryFailed: 
   const parsedDownloadUrl = new URL(downloadUrl);
   const downloadHeaders: Record<string, string> = { Range: "bytes=0-" };
   if (parsedDownloadUrl.hostname === "my.microsoftpersonalcontent.com") {
-    downloadHeaders.Authorization = `Bearer ${token}`;
+    downloadHeaders.Authorization = `Bearer ${await oneDriveContentToken()}`;
   }
   const response = await fetchWithRetry(downloadUrl, {
     redirect: "follow",
