@@ -9,6 +9,7 @@ type GraphItem = {
   lastModifiedDateTime?: string;
   file?: { mimeType?: string };
   folder?: { childCount?: number };
+  "@microsoft.graph.downloadUrl"?: string;
 };
 type SyncRequest = {
   action?: "dispatch" | "dispatch_photos" | "check" | "download";
@@ -75,7 +76,7 @@ async function resolveWorkbook(token: string): Promise<GraphItem> {
   if (folders.length !== 1) throw new Error("Pasta exclusiva do OneDrive nao encontrada.");
   const folderId = encodeURIComponent(String((folders[0] as GraphItem).id));
   const children = await graphJson(
-    `${GRAPH_ROOT}/items/${folderId}/children?%24select=id,name,size,lastModifiedDateTime,file`, token,
+    `${GRAPH_ROOT}/items/${folderId}/children?%24select=id,name,size,lastModifiedDateTime,file,%40microsoft.graph.downloadUrl`, token,
   );
   const matches = (Array.isArray(children.value) ? children.value : []).filter(
     (item: GraphItem) => item.name === workbookName && item.file,
@@ -125,15 +126,8 @@ async function secureWorkbookDownload(req: Request, jobId: string, retryFailed: 
     if (refreshError) throw new Error("Nao foi possivel atualizar a referencia da planilha para repeticao.");
   }
 
-  const redirectResponse = await fetchWithRetry(`${GRAPH_ROOT}/items/${encodeURIComponent(item.id)}/content`, {
-    headers: { Authorization: `Bearer ${token}`, Accept: "*/*", "Cache-Control": "no-store" },
-    redirect: "manual",
-    cache: "no-store",
-  });
-  const downloadUrl = redirectResponse.headers.get("location");
-  if (!downloadUrl || ![301, 302, 303, 307, 308].includes(redirectResponse.status)) {
-    throw new Error(`Microsoft nao forneceu o download seguro (${redirectResponse.status}).`);
-  }
+  const downloadUrl = item["@microsoft.graph.downloadUrl"];
+  if (!downloadUrl) throw new Error("Microsoft nao forneceu a URL de download pre-autorizada.");
   const response = await fetchWithRetry(downloadUrl, { redirect: "follow", cache: "no-store" });
   if (!response.ok) {
     const downloadHost = new URL(downloadUrl).hostname.replace(/[^a-z0-9.-]/gi, "");
