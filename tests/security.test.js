@@ -102,12 +102,13 @@ describe('contratos de autorização', () => {
     assert.match(syncFunction, /Cache-Control": "no-store"/);
     assert.match(syncFunction, /items\/\$\{itemId\}/);
     assert.match(syncFunction, /item\["@microsoft\.graph\.downloadUrl"\]/);
-    assert.match(syncFunction, /fetchWithRetry\(downloadUrl/);
+    assert.match(syncFunction, /fetchWithRetry\(currentDownloadUrl\.toString\(\)/);
     assert.match(syncFunction, /Range: "bytes=0-"/);
     assert.match(syncFunction, /hostname === "my\.microsoftpersonalcontent\.com"/);
-    assert.match(syncFunction, /microsoftToken\("offline_access OneDrive\.Read"\)/);
-    assert.match(syncFunction, /downloadHeaders\.Authorization = `Bearer \$\{await oneDriveContentToken\(\)\}`/);
-    assert.doesNotMatch(syncFunction, /searchParams\.get\("tempauth"\)/);
+    assert.match(syncFunction, /searchParams\.get\("tempauth"\)/);
+    assert.match(syncFunction, /downloadHeaders\.Authorization = `Bearer \$\{temporaryAuthorization\}`/);
+    assert.match(syncFunction, /hostname\.endsWith\("\.1drv\.com"\)/);
+    assert.match(syncFunction, /redirect: "manual"/);
     assert.match(syncFunction, /failure\?\.error \|\| "unknown_error"/);
     assert.match(syncFunction, /hostname\.replace/);
     assert.match(syncFunction, /RETRYABLE_STATUS = new Set\(\[429, 500, 502, 503, 504\]\)/);

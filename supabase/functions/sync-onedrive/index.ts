@@ -65,10 +65,6 @@ async function graphToken(): Promise<string> {
   return await microsoftToken(Deno.env.get("MS_GRAPH_SCOPE") || "offline_access Files.Read");
 }
 
-async function oneDriveContentToken(): Promise<string> {
-  return await microsoftToken("offline_access OneDrive.Read");
-}
-
 async function graphJson(url: string, token: string): Promise<Record<string, unknown>> {
   const response = await fetchWithRetry(url, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } });
   if (!response.ok) throw new Error(`Microsoft Graph respondeu ${response.status}.`);
@@ -142,17 +138,32 @@ async function secureWorkbookDownload(req: Request, jobId: string, retryFailed: 
   const downloadUrl = item["@microsoft.graph.downloadUrl"];
   if (!downloadUrl) throw new Error("Microsoft nao forneceu a URL de download pre-autorizada.");
   const parsedDownloadUrl = new URL(downloadUrl);
-  const downloadHeaders: Record<string, string> = { Range: "bytes=0-" };
-  if (parsedDownloadUrl.hostname === "my.microsoftpersonalcontent.com") {
-    downloadHeaders.Authorization = `Bearer ${await oneDriveContentToken()}`;
+  let currentDownloadUrl = parsedDownloadUrl;
+  let response: Response | null = null;
+  for (let redirectCount = 0; redirectCount < 5; redirectCount += 1) {
+    const downloadHeaders: Record<string, string> = { Range: "bytes=0-" };
+    if (currentDownloadUrl.hostname === "my.microsoftpersonalcontent.com") {
+      const temporaryAuthorization = currentDownloadUrl.searchParams.get("tempauth");
+      if (temporaryAuthorization) downloadHeaders.Authorization = `Bearer ${temporaryAuthorization}`;
+    }
+    response = await fetchWithRetry(currentDownloadUrl.toString(), {
+      redirect: "manual",
+      cache: "no-store",
+      headers: downloadHeaders,
+    });
+    if (![301, 302, 303, 307, 308].includes(response.status)) break;
+    const location = response.headers.get("location");
+    await response.body?.cancel().catch(() => {});
+    if (!location) throw new Error("Redirecionamento do OneDrive sem destino.");
+    const nextDownloadUrl = new URL(location, currentDownloadUrl);
+    const allowedMicrosoftHost = nextDownloadUrl.hostname === "my.microsoftpersonalcontent.com"
+      || nextDownloadUrl.hostname.endsWith(".1drv.com");
+    if (!allowedMicrosoftHost) throw new Error("Redirecionamento do OneDrive para destino nao autorizado.");
+    currentDownloadUrl = nextDownloadUrl;
   }
-  const response = await fetchWithRetry(downloadUrl, {
-    redirect: "follow",
-    cache: "no-store",
-    headers: downloadHeaders,
-  });
+  if (!response) throw new Error("Download do OneDrive nao iniciado.");
   if (!response.ok) {
-    const downloadHost = new URL(downloadUrl).hostname.replace(/[^a-z0-9.-]/gi, "");
+    const downloadHost = currentDownloadUrl.hostname.replace(/[^a-z0-9.-]/gi, "");
     throw new Error(`Download seguro do OneDrive falhou (${response.status} em ${downloadHost}).`);
   }
   const bytes = await response.arrayBuffer();
