@@ -116,4 +116,13 @@ describe('contratos de autorização', () => {
     assert.match(api, /async listSyncRuns\(/);
     assert.match(api, /async listSyncChanges\(/);
   });
+
+  it('processa auditoria de preços em lote para evitar timeout', () => {
+    const migration = readFileSync(new URL('../supabase/migrations/0013_bulk_price_sync_audit.sql', import.meta.url), 'utf8');
+    assert.match(migration, /bulk_price_audit/);
+    assert.match(migration, /insert into public\.sync_item_changes\([\s\S]*current_price\.price is distinct from incoming_rows\.new_price/);
+    assert.match(migration, /insert into public\.product_prices\(product_id,price_table_id,price,commercial_version_id\)[\s\S]*jsonb_array_elements\(rows\)/);
+    assert.match(migration, /import_kind_value <> 'PRECOS'/);
+    assert.match(migration, /import_catalog_batch_legacy/);
+  });
 });
