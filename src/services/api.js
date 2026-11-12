@@ -383,6 +383,13 @@ class SupabaseApi {
     return data?.data || data;
   }
 
+  async requestPhotoSync() {
+    const { data, error } = await this.client.functions.invoke('sync-onedrive', { body: { action: 'dispatch_photos' } });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+    return data?.data || data;
+  }
+
   async getSyncJob(id = null) {
     const { data, error } = await this.client.rpc('get_sync_job', { sync_job_id: id });
     if (error) throw error;
@@ -526,6 +533,7 @@ class DemoApi {
   async setProfileAccess() { return true; }
   async inviteUser(email, fullName) { return { email, full_name: fullName, demo: true }; }
   async requestDriveSync() { return { queued: true, job_id: 'demo-sync', status: 'SOLICITADO' }; }
+  async requestPhotoSync() { return { queued: true, job_id: 'demo-photos', status: 'SOLICITADO', photos_only: true }; }
   async getSyncJob() { return { id: 'demo-sync', status: 'CONCLUIDO', summary: { produtos: 5, precos: 5, estoque: 5 }, finished_at: new Date().toISOString() }; }
 }
 

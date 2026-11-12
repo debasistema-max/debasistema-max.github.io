@@ -283,8 +283,14 @@ function productCard(product, mode, cartType) {
 function cachedProductPhoto(code) {
   if (!photoCache.has(code)) {
     const request = api.getProductImage(code)
-      .then((blob) => blob ? URL.createObjectURL(blob) : null)
-      .catch(() => null);
+      .then((blob) => {
+        if (!blob) photoCache.delete(code);
+        return blob ? URL.createObjectURL(blob) : null;
+      })
+      .catch(() => {
+        photoCache.delete(code);
+        return null;
+      });
     photoCache.set(code, request);
   }
   return photoCache.get(code);
@@ -293,22 +299,24 @@ function cachedProductPhoto(code) {
 async function hydrateProductPhotos(scope) {
   if (!api || !state.session) return;
   const buttons = [...scope.querySelectorAll('[data-product-photo]')];
-  await Promise.all(buttons.map(async (button) => {
-    const url = await cachedProductPhoto(button.dataset.productPhoto);
-    if (!button.isConnected) return;
-    if (!url) {
-      button.querySelector('[data-photo-placeholder]').textContent = 'Sem foto';
-      button.classList.add('photo-missing');
-      return;
-    }
-    const image = document.createElement('img');
-    image.src = url;
-    image.alt = button.dataset.photoLabel || button.dataset.productPhoto;
-    image.loading = 'lazy';
-    button.replaceChildren(image);
-    button.dataset.photoUrl = url;
-    button.disabled = false;
-  }));
+  for (let start = 0; start < buttons.length; start += 4) {
+    await Promise.all(buttons.slice(start, start + 4).map(async (button) => {
+      const url = await cachedProductPhoto(button.dataset.productPhoto);
+      if (!button.isConnected) return;
+      if (!url) {
+        button.querySelector('[data-photo-placeholder]').textContent = 'Sem foto';
+        button.classList.add('photo-missing');
+        return;
+      }
+      const image = document.createElement('img');
+      image.src = url;
+      image.alt = button.dataset.photoLabel || button.dataset.productPhoto;
+      image.loading = 'lazy';
+      button.replaceChildren(image);
+      button.dataset.photoUrl = url;
+      button.disabled = false;
+    }));
+  }
 }
 
 function clearPhotoCache() {
@@ -488,7 +496,7 @@ function renderAdmin() {
   return `${pageHeader('Configuração', 'Administração', 'Gerencie a atualização dos dados sem expor credenciais no navegador.')}
     <div class="admin-grid">
       <section class="panel admin-card"><div class="section-title"><span>1</span><div><h2>Importação manual</h2><p>XLSX, XLS ou CSV. O arquivo original não é enviado nem armazenado.</p></div></div><input id="import-file" type="file" accept=".xlsx,.xls,.csv"><div id="import-preview">${pendingImport ? `<div class="import-ready"><strong>${escapeHtml(pendingImport.fileName)}</strong><span>${integer(pendingImport.rows.length)} linhas · tipo ${escapeHtml(pendingImport.kind)}</span><button class="button button-primary" data-action="commit-import">Validar e importar</button></div>` : '<p class="muted">Selecione um arquivo para validar os cabeçalhos.</p>'}</div></section>
-      <section class="panel admin-card"><div class="section-title"><span>2</span><div><h2>Catálogo online</h2><p>Planilha e fotos são sincronizadas somente quando um administrador solicitar.</p></div></div><p>Última atualização: <strong>${escapeHtml(formatDateTime(state.lastSync?.finished_at || state.lastSync?.started_at))}</strong></p>${syncStatus}<button class="button button-primary" data-action="sync-drive" ${syncActive ? 'disabled' : ''}>${syncActive ? 'Sincronizando…' : 'Sincronizar agora'}</button></section>
+      <section class="panel admin-card"><div class="section-title"><span>2</span><div><h2>Catálogo online</h2><p>Planilha e fotos são sincronizadas somente quando um administrador solicitar.</p></div></div><p>Última atualização: <strong>${escapeHtml(formatDateTime(state.lastSync?.finished_at || state.lastSync?.started_at))}</strong></p>${syncStatus}<div class="admin-sync-actions"><button class="button button-primary" data-action="sync-drive" ${syncActive ? 'disabled' : ''}>${syncActive ? 'Sincronizando…' : 'Sincronizar tudo'}</button><button class="button button-secondary" data-action="sync-photos" ${syncActive ? 'disabled' : ''}>Atualizar fotos pelo site</button></div></section>
       ${syncHistoryPanel()}
       <section class="panel admin-card"><div class="section-title"><span>4</span><div><h2>Armazenamento</h2><p>Monitoramento das tabelas estruturadas do DebaPortal.</p></div></div>${storageAlert}${summary.storage.length ? `<ul class="metric-list">${summary.storage.map((row) => `<li><span>${escapeHtml(row.relation || row.table_name)}</span><strong>${escapeHtml(row.pretty_size || `${row.bytes || 0} bytes`)}</strong></li>`).join('')}</ul>` : '<p class="muted">Resumo indisponível.</p>'}</section>
       <section class="panel admin-card"><div class="section-title"><span>5</span><div><h2>Filiais</h2><p>Cadastre origens antes das tabelas comerciais.</p></div></div><form id="branch-form" class="compact-form"><input name="code" maxlength="20" placeholder="Código (ex.: SP)" required><input name="name" maxlength="120" placeholder="Nome da filial" required><select name="state" required><option value="">UF</option>${stateOptions('')}</select><button class="button button-primary" type="submit">Adicionar filial</button></form><ul class="inline-list">${summary.branches.map((branch) => `<li><strong>${escapeHtml(branch.code)}</strong><span>${escapeHtml(branch.name)} · ${escapeHtml(branch.state)}</span></li>`).join('')}</ul></section>
@@ -886,6 +894,7 @@ root.addEventListener('click', async (event) => {
   }
   if (action === 'commit-import') { await handleImport(); return; }
   if (action === 'sync-drive') { await handleDriveSync(); return; }
+  if (action === 'sync-photos') { await handlePhotoSync(); return; }
   const profileButton = event.target.closest('[data-profile-id]');
   if (profileButton) {
     try {
@@ -1103,6 +1112,7 @@ async function pollDriveSync(jobId) {
       state.lastSync = context.lastSync;
       state.catalogOptions = catalogOptions;
       state.listSelection.clear();
+      clearPhotoCache();
       await refreshProducts(false);
       if (state.route === 'admin') await loadSyncHistory(false);
       setToast('Sincronização concluída.', 'success');
@@ -1131,6 +1141,25 @@ async function handleDriveSync() {
     });
   } catch (error) {
     setToast(error.message || 'Falha ao solicitar a sincronização.', 'error');
+  } finally {
+    state.busy = false;
+    updateView();
+  }
+}
+
+async function handlePhotoSync() {
+  state.busy = true; updateView();
+  try {
+    const result = await api.requestPhotoSync();
+    if (!result?.job_id) throw new Error('A atualização de fotos não retornou um identificador.');
+    setToast('Atualização das fotos pelo site solicitada.', 'success');
+    await loadAdmin();
+    void pollDriveSync(result.job_id).catch((error) => {
+      setToast(error.message || 'Não foi possível acompanhar a atualização das fotos.', 'error');
+      updateView();
+    });
+  } catch (error) {
+    setToast(error.message || 'Não foi possível solicitar as fotos pelo site.', 'error');
   } finally {
     state.busy = false;
     updateView();

@@ -8,6 +8,17 @@ const IMAGE_PATH_PATTERN = /^\/uploads\/products\/[A-Za-z0-9._-]+\/(?:site\/)?[A
 const ALLOWED_TYPES = new Set(["image/webp", "image/png", "image/jpeg"]);
 const MAX_IMAGE_BYTES = 5_000_000;
 
+function imageCandidates(code: string, storedPath?: string | null): string[] {
+  const candidates = [storedPath || ""];
+  if (FALLBACK_CODE_PATTERN.test(code)) {
+    for (const extension of ["webp", "png", "jpg"]) {
+      candidates.push(`/uploads/products/${code}/site/${code}.${extension}`);
+      candidates.push(`/uploads/products/${code}/${code}.${extension}`);
+    }
+  }
+  return [...new Set(candidates.filter((path) => IMAGE_PATH_PATTERN.test(path) && !path.includes("..")))];
+}
+
 function requiredEnv(name: string): string {
   const value = Deno.env.get(name)?.trim();
   if (!value) throw new Error(`Configuracao ausente: ${name}.`);
@@ -38,23 +49,29 @@ Deno.serve(async (req) => {
     const { data: image, error: imageError } = await admin
       .from("product_images").select("image_path").eq("product_id", product.id).maybeSingle();
     if (imageError) throw imageError;
-    const imagePath = image?.image_path
-      || (FALLBACK_CODE_PATTERN.test(code) ? `/uploads/products/${code}/site/${code}.webp` : "");
-    if (!IMAGE_PATH_PATTERN.test(imagePath) || imagePath.includes("..")) {
+    const candidates = imageCandidates(code, image?.image_path);
+    if (!candidates.length) {
       return jsonResponse(req, { error: "Foto nao encontrada." }, 404);
     }
 
     const origin = new URL(requiredEnv("PRODUCT_IMAGE_ORIGIN"));
     if (origin.protocol !== "https:" || origin.username || origin.password) throw new Error("Origem de fotos invalida.");
-    const target = new URL(imagePath, origin);
-    if (target.origin !== origin.origin) throw new Error("Caminho de foto invalido.");
-    const upstream = await fetch(target, {
-      headers: { Accept: "image/avif,image/webp,image/png,image/jpeg" },
-      redirect: "error",
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (upstream.status === 404) return jsonResponse(req, { error: "Foto nao encontrada." }, 404);
-    if (!upstream.ok) throw new Error("Fonte de fotos indisponivel.");
+    let upstream: Response | null = null;
+    for (const imagePath of candidates) {
+      const target = new URL(imagePath, origin);
+      if (target.origin !== origin.origin) continue;
+      const response = await fetch(target, {
+        headers: { Accept: "image/webp,image/png,image/jpeg" },
+        redirect: "error",
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (response.ok) {
+        upstream = response;
+        break;
+      }
+      if (response.status !== 404) throw new Error("Fonte de fotos indisponivel.");
+    }
+    if (!upstream) return jsonResponse(req, { error: "Foto nao encontrada." }, 404);
     const contentType = (upstream.headers.get("content-type") || "").split(";", 1)[0].toLowerCase();
     if (!ALLOWED_TYPES.has(contentType)) throw new Error("Formato de foto nao autorizado.");
     const bytes = new Uint8Array(await upstream.arrayBuffer());
@@ -66,7 +83,7 @@ Deno.serve(async (req) => {
         ...corsHeaders(req),
         "Content-Type": contentType,
         "Content-Length": String(bytes.length),
-        "Cache-Control": "private, max-age=3600",
+        "Cache-Control": "private, max-age=21600",
         "Content-Security-Policy": "default-src 'none'",
         "X-Content-Type-Options": "nosniff",
       },

@@ -53,5 +53,6 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SYNC_JOB_ID: ${{ inputs.job_id }}
           PRODUCT_CATALOG_API_URL: ${{ secrets.PRODUCT_CATALOG_API_URL }}
           PRODUCT_IMAGE_ORIGIN: ${{ secrets.PRODUCT_IMAGE_ORIGIN }}

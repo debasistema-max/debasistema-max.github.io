@@ -75,6 +75,22 @@ describe('contratos de autorização', () => {
     assert.match(edgeFunction, /FALLBACK_CODE_PATTERN/);
     assert.match(edgeFunction, /\(\?:site\\\/\)\?/);
     assert.match(edgeFunction, /image\?\.image_path/);
+    assert.match(edgeFunction, /for \(const extension of \["webp", "png", "jpg"\]\)/);
+    assert.match(edgeFunction, /for \(const imagePath of candidates\)/);
+  });
+
+  it('permite atualizar fotos somente pelo site com acompanhamento administrativo', () => {
+    const syncFunction = readFileSync(new URL('../supabase/functions/sync-onedrive/index.ts', import.meta.url), 'utf8');
+    const photoScript = readFileSync(new URL('../scripts/sync-photos-remote.mjs', import.meta.url), 'utf8');
+    const workflow = readFileSync(new URL('../.github/workflows/sync-catalog.yml', import.meta.url), 'utf8');
+    const main = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+    assert.match(syncFunction, /dispatch_photos/);
+    assert.match(syncFunction, /photos_only: "true"/);
+    assert.match(photoScript, /status: "EM_EXECUCAO"/);
+    assert.match(photoScript, /status: "CONCLUIDO"/);
+    assert.match(workflow, /SYNC_JOB_ID:.*inputs\.job_id/);
+    assert.match(main, /Atualizar fotos pelo site/);
+    assert.match(main, /photoCache\.delete\(code\)/);
   });
 
   it('gera listas completas paginadas e permite seleção personalizada', () => {

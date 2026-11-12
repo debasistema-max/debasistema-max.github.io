@@ -10,7 +10,7 @@ type GraphItem = {
   file?: { mimeType?: string };
   folder?: { childCount?: number };
 };
-type SyncRequest = { action?: "dispatch" | "check" };
+type SyncRequest = { action?: "dispatch" | "dispatch_photos" | "check" };
 
 const GRAPH_ROOT = "https://graph.microsoft.com/v1.0/me/drive";
 
@@ -87,10 +87,11 @@ Deno.serve(async (req) => {
   try {
     const { user } = await requireAdmin(req);
     const input = await req.json().catch(() => ({})) as SyncRequest;
-    const token = await graphToken();
-    const item = await resolveWorkbook(token);
+    const photosOnly = input.action === "dispatch_photos";
 
-    if (input.action !== "dispatch") {
+    if (input.action !== "dispatch" && !photosOnly) {
+      const token = await graphToken();
+      const item = await resolveWorkbook(token);
       return jsonResponse(req, {
         data: {
           source_available: true,
@@ -100,6 +101,9 @@ Deno.serve(async (req) => {
         },
       });
     }
+
+    const driveToken = photosOnly ? null : await graphToken();
+    const item = driveToken ? await resolveWorkbook(driveToken) : null;
 
     const admin = createClient(requiredEnv("SUPABASE_URL"), requiredEnv("SUPABASE_SERVICE_ROLE_KEY"), {
       auth: { persistSession: false, autoRefreshToken: false },
@@ -116,13 +120,14 @@ Deno.serve(async (req) => {
       return jsonResponse(req, { data: { queued: true, job_id: activeJob.id, status: activeJob.status } }, 202);
     }
 
-    const downloadUrl = await temporaryDownloadUrl(item, token);
+    const downloadUrl = item && driveToken ? await temporaryDownloadUrl(item, driveToken) : null;
     const { data: job, error: insertError } = await admin.from("sync_jobs").insert({
       requested_by: user.id,
       status: "SOLICITADO",
-      source_size: item.size,
-      source_modified: item.lastModifiedDateTime,
+      source_size: item?.size ?? null,
+      source_modified: item?.lastModifiedDateTime ?? null,
       source_download_url: downloadUrl,
+      summary: photosOnly ? { mode: "FOTOS" } : {},
     }).select("id,status,requested_at").single();
     if (insertError) throw insertError;
 
@@ -136,7 +141,11 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
         "X-GitHub-Api-Version": "2022-11-28",
       },
-      body: JSON.stringify({ ref: "main", inputs: { job_id: job.id }, return_run_details: true }),
+      body: JSON.stringify({
+        ref: "main",
+        inputs: { job_id: job.id, ...(photosOnly ? { photos_only: "true" } : {}) },
+        return_run_details: true,
+      }),
     });
     const run = gitHubResponse.status === 204 ? {} : await gitHubResponse.json().catch(() => ({}));
     if (!gitHubResponse.ok) {
@@ -154,7 +163,7 @@ Deno.serve(async (req) => {
         github_run_url: run.html_url ?? null,
       }).eq("id", job.id);
     }
-    return jsonResponse(req, { data: { queued: true, job_id: job.id, status: job.status } }, 202);
+    return jsonResponse(req, { data: { queued: true, job_id: job.id, status: job.status, photos_only: photosOnly } }, 202);
   } catch (error) {
     const message = errorMessage(error);
     const status = /autenticacao|sessao/i.test(message) ? 401
