@@ -65,18 +65,25 @@ async function currentPhotoCount() {
 
 try {
   const jobResponse = await fetch(
-    `${supabaseUrl}/rest/v1/sync_jobs?id=eq.${encodeURIComponent(jobId)}&select=id,status,source_size,source_modified,source_download_url`,
+    `${supabaseUrl}/rest/v1/sync_jobs?id=eq.${encodeURIComponent(jobId)}&select=id,status,source_size,source_modified`,
     { headers },
   );
   if (!jobResponse.ok) throw new Error(`Solicitacao indisponivel (${jobResponse.status}).`);
   const [job] = await jobResponse.json();
-  if (!job || job.status !== "SOLICITADO" || !job.source_download_url) {
+  if (!job || !["SOLICITADO", "FALHOU"].includes(job.status)) {
     throw new Error("Solicitacao invalida ou ja processada.");
   }
 
-  await updateJob({ status: "EM_EXECUCAO", started_at: new Date().toISOString(), error_message: null });
-  const fileResponse = await fetch(job.source_download_url, { redirect: "follow" });
-  if (!fileResponse.ok) throw new Error(`Download temporario falhou (${fileResponse.status}).`);
+  await updateJob({ status: "EM_EXECUCAO", started_at: new Date().toISOString(), finished_at: null, error_message: null });
+  const fileResponse = await fetch(`${supabaseUrl}/functions/v1/sync-onedrive`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ action: "download", job_id: jobId }),
+  });
+  if (!fileResponse.ok) {
+    const failure = await fileResponse.json().catch(() => ({}));
+    throw new Error(failure.error || `Download seguro falhou (${fileResponse.status}).`);
+  }
   const bytes = Buffer.from(await fileResponse.arrayBuffer());
   if (bytes.length !== Number(job.source_size) || bytes.length > 20_000_000) {
     throw new Error("Arquivo baixado incompleto ou fora do limite.");

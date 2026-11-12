@@ -93,6 +93,18 @@ describe('contratos de autorização', () => {
     assert.match(main, /photoCache\.delete\(code\)/);
   });
 
+  it('baixa a planilha no momento da execução sem expor link temporário', () => {
+    const syncFunction = readFileSync(new URL('../supabase/functions/sync-onedrive/index.ts', import.meta.url), 'utf8');
+    const syncScript = readFileSync(new URL('../scripts/sync-onedrive-remote.mjs', import.meta.url), 'utf8');
+    assert.match(syncFunction, /input\.action === "download"/);
+    assert.match(syncFunction, /hasServiceRole\(req\)/);
+    assert.match(syncFunction, /Cache-Control": "no-store"/);
+    assert.match(syncFunction, /redirect: "follow"/);
+    assert.match(syncScript, /functions\/v1\/sync-onedrive/);
+    assert.match(syncScript, /action: "download"/);
+    assert.doesNotMatch(syncScript, /job\.source_download_url/);
+  });
+
   it('gera listas completas paginadas e permite seleção personalizada', () => {
     const main = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
     const api = readFileSync(new URL('../src/services/api.js', import.meta.url), 'utf8');

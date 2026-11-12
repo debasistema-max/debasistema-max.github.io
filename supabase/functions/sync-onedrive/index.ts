@@ -10,7 +10,7 @@ type GraphItem = {
   file?: { mimeType?: string };
   folder?: { childCount?: number };
 };
-type SyncRequest = { action?: "dispatch" | "dispatch_photos" | "check" };
+type SyncRequest = { action?: "dispatch" | "dispatch_photos" | "check" | "download"; job_id?: string };
 
 const GRAPH_ROOT = "https://graph.microsoft.com/v1.0/me/drive";
 
@@ -66,17 +66,53 @@ async function resolveWorkbook(token: string): Promise<GraphItem> {
   return matches[0] as GraphItem;
 }
 
-async function temporaryDownloadUrl(item: GraphItem, token: string): Promise<string> {
-  if ((item.size ?? 0) <= 0 || (item.size ?? 0) > 20_000_000) throw new Error("Arquivo fora do limite permitido.");
-  const response = await fetch(`${GRAPH_ROOT}/items/${encodeURIComponent(item.id)}/content`, {
-    headers: { Authorization: `Bearer ${token}` },
-    redirect: "manual",
+function hasServiceRole(req: Request): boolean {
+  const match = (req.headers.get("authorization") || "").match(/^Bearer\s+(.+)$/i);
+  const token = match?.[1] || "";
+  return token !== "" && token === requiredEnv("SUPABASE_SERVICE_ROLE_KEY");
+}
+
+async function secureWorkbookDownload(req: Request, jobId: string): Promise<Response> {
+  if (!hasServiceRole(req)) return jsonResponse(req, { error: "Acesso de backend obrigatorio." }, 403);
+  if (!/^[0-9a-f-]{36}$/i.test(jobId)) return jsonResponse(req, { error: "Solicitacao invalida." }, 400);
+
+  const admin = createClient(requiredEnv("SUPABASE_URL"), requiredEnv("SUPABASE_SERVICE_ROLE_KEY"), {
+    auth: { persistSession: false, autoRefreshToken: false },
   });
-  const location = response.headers.get("location");
-  if (!location || ![301, 302, 303, 307, 308].includes(response.status)) {
-    throw new Error("Microsoft nao forneceu o download temporario.");
+  const { data: job, error } = await admin.from("sync_jobs")
+    .select("id,status,source_size,source_modified")
+    .eq("id", jobId)
+    .maybeSingle();
+  if (error || !job || !["SOLICITADO", "EM_EXECUCAO"].includes(job.status)) {
+    return jsonResponse(req, { error: "Solicitacao indisponivel para download." }, 409);
   }
-  return location;
+
+  const token = await graphToken();
+  const item = await resolveWorkbook(token);
+  if ((item.size ?? 0) <= 0 || (item.size ?? 0) > 20_000_000) throw new Error("Arquivo fora do limite permitido.");
+  if (Number(job.source_size) !== Number(item.size)
+    || String(job.source_modified || "") !== String(item.lastModifiedDateTime || "")) {
+    throw new Error("A planilha foi alterada depois da solicitacao. Solicite uma nova sincronizacao.");
+  }
+
+  const response = await fetch(`${GRAPH_ROOT}/items/${encodeURIComponent(item.id)}/content`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
+    redirect: "follow",
+  });
+  if (!response.ok) throw new Error(`Download seguro do OneDrive falhou (${response.status}).`);
+  const bytes = await response.arrayBuffer();
+  if (bytes.byteLength !== Number(item.size) || bytes.byteLength > 20_000_000) {
+    throw new Error("Arquivo baixado incompleto ou fora do limite.");
+  }
+  return new Response(bytes, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "Content-Length": String(bytes.byteLength),
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
 }
 
 Deno.serve(async (req) => {
@@ -85,8 +121,10 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return jsonResponse(req, { error: "Metodo nao permitido." }, 405);
 
   try {
-    const { user } = await requireAdmin(req);
     const input = await req.json().catch(() => ({})) as SyncRequest;
+    if (input.action === "download") return await secureWorkbookDownload(req, String(input.job_id || ""));
+
+    const { user } = await requireAdmin(req);
     const photosOnly = input.action === "dispatch_photos";
 
     if (input.action !== "dispatch" && !photosOnly) {
@@ -120,13 +158,12 @@ Deno.serve(async (req) => {
       return jsonResponse(req, { data: { queued: true, job_id: activeJob.id, status: activeJob.status } }, 202);
     }
 
-    const downloadUrl = item && driveToken ? await temporaryDownloadUrl(item, driveToken) : null;
     const { data: job, error: insertError } = await admin.from("sync_jobs").insert({
       requested_by: user.id,
       status: "SOLICITADO",
       source_size: item?.size ?? null,
       source_modified: item?.lastModifiedDateTime ?? null,
-      source_download_url: downloadUrl,
+      source_download_url: null,
       summary: photosOnly ? { mode: "FOTOS" } : {},
     }).select("id,status,requested_at").single();
     if (insertError) throw insertError;
