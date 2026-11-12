@@ -11,6 +11,7 @@ let pendingImport = null;
 let needsPasswordSetup = false;
 let photoZoom = 1;
 const photoCache = new Map();
+const COMMERCIAL_LINES = ['Leve', 'Pesada', 'Utilitário'];
 
 const routes = {
   home: 'Início',
@@ -237,6 +238,32 @@ function productResults(mode, cartType) {
   </div><div class="pagination"><button class="button button-secondary" data-page="${state.productPage - 1}" ${state.productPage <= 1 ? 'disabled' : ''}>Anterior</button><button class="button button-secondary" data-page="${state.productPage + 1}" ${state.productPage >= totalPages ? 'disabled' : ''}>Próxima</button></div></section>`;
 }
 
+function commercialListResults() {
+  const totalPages = Math.max(1, Math.ceil(state.productTotal / state.pageSize));
+  if (state.busy) return '<div class="loading-state">Carregando produtos...</div>';
+  if (!state.products.length) return '<div class="empty-state"><strong>Nenhum item encontrado</strong><span>Ajuste a pesquisa ou os filtros.</span></div>';
+  const custom = state.listMode === 'custom';
+  const rows = state.products.map((product) => {
+    const level = stockLevel(product.stock_origin);
+    return `<tr>
+      ${custom ? `<td class="list-check-cell" data-label="Selecionar"><input type="checkbox" data-list-product="${product.id}" ${state.listSelection.has(product.id) ? 'checked' : ''} aria-label="Incluir ${escapeHtml(product.code)}"></td>` : ''}
+      <td data-label="Código"><span class="code-chip">${escapeHtml(product.code)}</span></td>
+      <td data-label="Descrição" class="list-description"><strong>${escapeHtml(product.description)}</strong><small>${escapeHtml(product.category || 'Sem categoria')}</small></td>
+      <td data-label="Aplicação" class="list-application">${escapeHtml(product.applications.join(' · ') || '—')}</td>
+      <td data-label="Ano" class="list-year">${escapeHtml(product.years?.join(' · ') || '—')}</td>
+      <td data-label="Preço" class="list-price">${product.price === null ? 'Sem preço' : money(product.price)}</td>
+      <td data-label="Estoque PR">${product.stock_pr === null ? '—' : integer(product.stock_pr)}</td>
+      <td data-label="Estoque SP">${product.stock_sp === null ? '—' : integer(product.stock_sp)}</td>
+      <td data-label="Disponibilidade"><span class="stock-badge stock-${level.key}"><i></i>${escapeHtml(level.label)}</span></td>
+    </tr>`;
+  }).join('');
+  return `<section class="results-section commercial-list-results">
+    <div class="results-meta"><span>${integer(state.productTotal)} item(ns)</span><span>Página ${state.productPage} de ${totalPages}</span></div>
+    <div class="table-wrap"><table class="commercial-list-table"><thead><tr>${custom ? '<th class="list-check-cell">Incluir</th>' : ''}<th>Código</th><th>Descrição</th><th>Aplicação</th><th>Ano</th><th>Preço</th><th>PR</th><th>SP</th><th>Disponibilidade</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="pagination"><button class="button button-secondary" data-page="${state.productPage - 1}" ${state.productPage <= 1 ? 'disabled' : ''}>Anterior</button><button class="button button-secondary" data-page="${state.productPage + 1}" ${state.productPage >= totalPages ? 'disabled' : ''}>Próxima</button></div>
+  </section>`;
+}
+
 function productCard(product, mode, cartType) {
   const level = stockLevel(product.stock_origin);
   const price = product.price === null ? 'Sem preço' : money(product.price);
@@ -343,7 +370,8 @@ function renderLists() {
   const selection = custom ? `<section class="list-selection-bar"><span><strong>${integer(state.listSelection.size)}</strong> produto(s) selecionado(s)</span><div><button class="button button-secondary button-small" data-action="select-visible-products">Selecionar esta página</button><button class="button button-ghost button-small" data-action="clear-list-selection" ${state.listSelection.size ? '' : 'disabled'}>Limpar seleção</button></div></section>` : '';
   const guidance = categoryPending ? '<div class="notice notice-warn">Escolha uma categoria para gerar a lista.</div>' : '';
   return `${pageHeader('Exportação', 'Listas comerciais', 'Filtre a lista e gere o arquivo no navegador. O arquivo não é armazenado no Supabase.', actions)}
-    <div class="shortcut-row"><button class="${state.listMode === 'all' ? 'active' : ''}" data-list-shortcut="all">Lista completa</button><button class="${state.listMode === 'stock' ? 'active' : ''}" data-list-shortcut="stock">Somente disponíveis</button><button class="${state.listMode === 'category' ? 'active' : ''}" data-list-shortcut="category">Por categoria</button><button class="${custom ? 'active' : ''}" data-list-shortcut="custom">Personalizada</button></div>${guidance}${searchControls()}${selection}${productResults('list', '')}`;
+    <section class="commercial-list-hero"><div><span class="eyebrow">Catálogo comercial</span><h2>Aplicações e anos organizados</h2><p>Visual limpo para consulta e compartilhamento, com preço e disponibilidade por filial.</p></div><div class="commercial-line-badges"><span>Linhas</span>${COMMERCIAL_LINES.map((line) => `<strong>${line}</strong>`).join('')}</div></section>
+    <div class="shortcut-row"><button class="${state.listMode === 'all' ? 'active' : ''}" data-list-shortcut="all">Lista completa</button><button class="${state.listMode === 'stock' ? 'active' : ''}" data-list-shortcut="stock">Somente disponíveis</button><button class="${state.listMode === 'category' ? 'active' : ''}" data-list-shortcut="category">Por categoria</button><button class="${custom ? 'active' : ''}" data-list-shortcut="custom">Personalizada</button></div>${guidance}${searchControls()}${selection}${commercialListResults()}`;
 }
 
 function renderDocuments() {
@@ -932,7 +960,7 @@ async function handleListExport(format) {
       : state.filters.category ? state.filters.category
       : state.filters.line ? state.filters.line
       : state.filters.inStockOnly ? 'disponíveis' : 'completa';
-    const payload = { title: `Lista comercial - ${titleSuffix}`, items, context: { destinationState: state.destinationState, originCode: state.originCode, updatedAt: formatDateTime(state.lastSync?.finished_at || state.lastSync?.started_at) } };
+    const payload = { title: `Lista comercial - ${titleSuffix}`, variant: 'commercial-list', items, context: { destinationState: state.destinationState, originCode: state.originCode, lines: COMMERCIAL_LINES } };
     format === 'pdf' ? exportPdf(payload) : exportExcel(payload);
     setToast(`${integer(items.length)} produto(s) exportado(s).`, 'success');
   } catch (error) {

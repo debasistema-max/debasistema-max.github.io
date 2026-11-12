@@ -141,14 +141,16 @@ function ensureProduct(store, code) {
   return product;
 }
 
-function addApplication(product, application, model = "") {
+function addApplication(product, application, { model = "", year = "" } = {}) {
   const text = publicText(application);
   const modelText = publicText(model, 300);
+  const yearText = publicText(year, 100);
   if (!text && !modelText) return;
-  const label = [text, modelText].filter(Boolean).join(" · ");
-  product.applications.set(headerKey(label), {
+  const label = text || modelText;
+  product.applications.set(headerKey(`${label}|${yearText}`), {
     application: label,
     ...(modelText ? { model: modelText } : {}),
+    ...(yearText ? { year: yearText } : {}),
   });
 }
 
@@ -178,7 +180,7 @@ export function parsePortalWorkbook(XLSX, bytes, name, maxRows = 50_000) {
       product.ipiRate ??= valueAt(row, matrixHeader.columns, "ipi") || null;
       const application = publicText(valueAt(row, matrixHeader.columns, "aplicacao"));
       const year = publicText(valueAt(row, matrixHeader.columns, "ano"), 100);
-      addApplication(product, [application, year].filter(Boolean).join(" "));
+      addApplication(product, application, { year });
     }
   }
 
@@ -197,7 +199,7 @@ export function parsePortalWorkbook(XLSX, bytes, name, maxRows = 50_000) {
       product.ipiRate ??= valueAt(row, sapHeader.columns, "ipi") || null;
       const model = publicText(valueAt(row, sapHeader.columns, "modelo"), 300);
       const year = publicText(valueAt(row, sapHeader.columns, "ano"), 100);
-      addApplication(product, year, model);
+      addApplication(product, model, { model, year });
       for (const synonymField of ["oem 01", "codigo de barras"]) {
         const synonym = publicText(valueAt(row, sapHeader.columns, synonymField), 300);
         if (synonym) product.synonyms.add(synonym);

@@ -90,3 +90,25 @@ test("aplica a regra fiscal por rota comercial", () => {
     "PR-SP": 110,
   });
 });
+
+test("mantém aplicação e ano em campos separados", () => {
+  const workbook = XLSX.utils.book_new();
+  const addSheet = (name, rows) => XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(rows), name);
+  addSheet("MATRIZ", [
+    ["CODIGO", "DESCRICAO", "APLICACAO", "ANO", "PRECO S/IMP", "IPI"],
+    ["ABC-2", "Produto com aplicação", "Veículo / Modelo", "2018/...", 100, "10%"],
+  ]);
+  addSheet("LISTA PR-PR", [
+    ["CODIGO", "DESCRICAO", "PRECO S/IMP", "PRECO C/IMPOSTOS"],
+    ["ABC-2", "Produto com aplicação", 100, 110],
+  ]);
+  addSheet("PORTAL ESTOQUE PR", [
+    ["CODIGO", "ESTOQUE", "DISP GERAL"],
+    ["ABC-2", 5, 5],
+  ]);
+  const bytes = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+  const { datasets } = parsePortalWorkbook(XLSX, bytes, "aplicacao-ano.xlsx");
+  const product = datasets.find((dataset) => dataset.kind === "PRODUTOS").rows[0];
+
+  assert.deepEqual(product.applications, [{ application: "Veículo / Modelo", year: "2018/..." }]);
+});

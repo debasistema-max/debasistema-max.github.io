@@ -3,11 +3,11 @@ import { config, hasSupabaseConfig } from '../config.js';
 import { uuid } from '../lib/utils.js';
 
 const demoProducts = [
-  { id: 'p1', code: 'DP-1001', description: 'Amortecedor dianteiro', applications: ['Veículo compacto 2018 a 2024'], category: 'Suspensão', product_line: 'Amortecedores', price: 289.9, stock_pr: 86, stock_sp: 42, total_stock: 128 },
-  { id: 'p2', code: 'DP-1020', description: 'Kit de suspensão traseira', applications: ['Utilitário leve 2019 a 2025'], category: 'Suspensão', product_line: 'Kits', price: 419.5, stock_pr: 12, stock_sp: 4, total_stock: 16 },
-  { id: 'p3', code: 'DP-2044', description: 'Terminal de direção', applications: ['Sedã médio 2016 a 2023'], category: 'Direção', product_line: 'Terminais', price: 98.75, stock_pr: 0, stock_sp: 0, total_stock: 0 },
-  { id: 'p4', code: 'DP-3108', description: 'Bieleta estabilizadora', applications: ['SUV compacto 2020 a 2026'], category: 'Suspensão', product_line: 'Bieletas', price: 74.2, stock_pr: 31, stock_sp: 55, total_stock: 86 },
-  { id: 'p5', code: 'DP-4400', description: 'Coxim superior', applications: ['Hatch 2015 a 2022'], category: 'Suspensão', product_line: 'Coxins', price: 132, stock_pr: 8, stock_sp: 0, total_stock: 8 }
+  { id: 'p1', code: 'DP-1001', description: 'Amortecedor dianteiro', applications: ['Veículo compacto'], years: ['2018 a 2024'], category: 'Suspensão', product_line: 'Amortecedores', price: 289.9, stock_pr: 86, stock_sp: 42, total_stock: 128 },
+  { id: 'p2', code: 'DP-1020', description: 'Kit de suspensão traseira', applications: ['Utilitário leve'], years: ['2019 a 2025'], category: 'Suspensão', product_line: 'Kits', price: 419.5, stock_pr: 12, stock_sp: 4, total_stock: 16 },
+  { id: 'p3', code: 'DP-2044', description: 'Terminal de direção', applications: ['Sedã médio'], years: ['2016 a 2023'], category: 'Direção', product_line: 'Terminais', price: 98.75, stock_pr: 0, stock_sp: 0, total_stock: 0 },
+  { id: 'p4', code: 'DP-3108', description: 'Bieleta estabilizadora', applications: ['SUV compacto'], years: ['2020 a 2026'], category: 'Suspensão', product_line: 'Bieletas', price: 74.2, stock_pr: 31, stock_sp: 55, total_stock: 86 },
+  { id: 'p5', code: 'DP-4400', description: 'Coxim superior', applications: ['Hatch'], years: ['2015 a 2022'], category: 'Suspensão', product_line: 'Coxins', price: 132, stock_pr: 8, stock_sp: 0, total_stock: 8 }
 ];
 
 function normalizeProduct(row) {
@@ -17,6 +17,7 @@ function normalizeProduct(row) {
     code: row.code || row.codigo || '',
     description: row.description || row.descricao || '',
     applications: Array.isArray(row.applications) ? row.applications : [row.application || row.aplicacao || ''].filter(Boolean),
+    years: Array.isArray(row.application_years) ? row.application_years : (Array.isArray(row.years) ? row.years : [row.year || row.ano || ''].filter(Boolean)),
     category: row.category || row.categoria || '',
     product_line: row.product_line || row.linha || '',
     price: nullableNumber(row.price ?? row.preco),
