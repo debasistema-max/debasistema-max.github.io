@@ -51,7 +51,11 @@ async function microsoftToken(scope: string): Promise<string> {
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
   });
-  if (!response.ok) throw new Error(`Falha na autenticacao Microsoft (${response.status}).`);
+  if (!response.ok) {
+    const failure = await response.json().catch(() => ({}));
+    const errorCode = String(failure?.error || "unknown_error").replace(/[^a-z0-9_.-]/gi, "");
+    throw new Error(`Falha na autenticacao Microsoft (${response.status}, ${errorCode}).`);
+  }
   const data = await response.json();
   if (!data.access_token) throw new Error("Microsoft nao retornou token de acesso.");
   return String(data.access_token);
