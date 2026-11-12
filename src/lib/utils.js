@@ -53,6 +53,17 @@ export function stockLevel(quantity) {
   return { key: 'none', label: 'Indisponível' };
 }
 
+export function uniqueTextValues(values) {
+  const unique = new Map();
+  for (const value of Array.isArray(values) ? values : [values]) {
+    const text = String(value ?? '').trim().replace(/\s+/g, ' ');
+    if (!text) continue;
+    const key = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
+    if (!unique.has(key)) unique.set(key, text);
+  }
+  return [...unique.values()];
+}
+
 export function safeFileName(value) {
   return String(value || 'debaportal')
     .normalize('NFD')

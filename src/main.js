@@ -4,7 +4,7 @@ import { config, hasSupabaseConfig } from './config.js';
 import { formatCnpj, isValidCnpj, lookupCnpj } from './lib/cnpj.js';
 import { allowedOrigins, choosePriceTable, resolveCommercialContext } from './lib/commercial-context.js';
 import { state, navigate, persistSessionState, setToast } from './state.js';
-import { STATES, escapeHtml, formatDateTime, integer, money, onlyDigits, stockLevel } from './lib/utils.js';
+import { STATES, escapeHtml, formatDateTime, integer, money, onlyDigits, stockLevel, uniqueTextValues } from './lib/utils.js';
 
 const root = document.querySelector('#app');
 let pendingImport = null;
@@ -249,8 +249,8 @@ function commercialListResults() {
       ${custom ? `<td class="list-check-cell" data-label="Selecionar"><input type="checkbox" data-list-product="${product.id}" ${state.listSelection.has(product.id) ? 'checked' : ''} aria-label="Incluir ${escapeHtml(product.code)}"></td>` : ''}
       <td data-label="Código"><span class="code-chip">${escapeHtml(product.code)}</span></td>
       <td data-label="Descrição" class="list-description"><strong>${escapeHtml(product.description)}</strong><small>${escapeHtml(product.category || 'Sem categoria')}</small></td>
-      <td data-label="Aplicação" class="list-application">${escapeHtml(product.applications.join(' · ') || '—')}</td>
-      <td data-label="Ano" class="list-year">${escapeHtml(product.years?.join(' · ') || '—')}</td>
+      <td data-label="Aplicação" class="list-application">${escapeHtml(uniqueTextValues(product.applications).join(' · ') || '—')}</td>
+      <td data-label="Ano" class="list-year">${escapeHtml(uniqueTextValues(product.years).join(' · ') || '—')}</td>
       <td data-label="Preço" class="list-price">${product.price === null ? 'Sem preço' : money(product.price)}</td>
       <td data-label="Estoque PR">${product.stock_pr === null ? '—' : integer(product.stock_pr)}</td>
       <td data-label="Estoque SP">${product.stock_sp === null ? '—' : integer(product.stock_sp)}</td>

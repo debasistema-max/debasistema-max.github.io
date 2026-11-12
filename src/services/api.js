@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { config, hasSupabaseConfig } from '../config.js';
-import { uuid } from '../lib/utils.js';
+import { uniqueTextValues, uuid } from '../lib/utils.js';
 
 const demoProducts = [
   { id: 'p1', code: 'DP-1001', description: 'Amortecedor dianteiro', applications: ['Veículo compacto'], years: ['2018 a 2024'], category: 'Suspensão', product_line: 'Amortecedores', price: 289.9, stock_pr: 86, stock_sp: 42, total_stock: 128 },
@@ -16,8 +16,8 @@ function normalizeProduct(row) {
     id: row.id || row.product_id,
     code: row.code || row.codigo || '',
     description: row.description || row.descricao || '',
-    applications: Array.isArray(row.applications) ? row.applications : [row.application || row.aplicacao || ''].filter(Boolean),
-    years: Array.isArray(row.application_years) ? row.application_years : (Array.isArray(row.years) ? row.years : [row.year || row.ano || ''].filter(Boolean)),
+    applications: uniqueTextValues(Array.isArray(row.applications) ? row.applications : [row.application || row.aplicacao || '']),
+    years: uniqueTextValues(Array.isArray(row.application_years) ? row.application_years : (Array.isArray(row.years) ? row.years : [row.year || row.ano || ''])),
     category: row.category || row.categoria || '',
     product_line: row.product_line || row.linha || '',
     price: nullableNumber(row.price ?? row.preco),

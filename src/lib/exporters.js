@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { money, safeFileName, stockLevel } from './utils.js';
+import { money, safeFileName, stockLevel, uniqueTextValues } from './utils.js';
 
 function triggerDownload(blob, fileName) {
   const url = URL.createObjectURL(blob);
@@ -34,13 +34,19 @@ export function rowsForExport(items) {
 }
 
 export function commercialRows(items) {
-  return items.map((item) => {
+  const uniqueItems = new Map();
+  for (const item of items) {
+    const code = String(itemValue(item, 'code') || '').trim().toLocaleUpperCase('pt-BR');
+    const key = code || String(itemValue(item, 'id') || uniqueItems.size);
+    if (!uniqueItems.has(key)) uniqueItems.set(key, item);
+  }
+  return [...uniqueItems.values()].map((item) => {
     const stockOrigin = itemValue(item, 'stock_origin', null);
     return {
       Código: itemValue(item, 'code'),
       Descrição: itemValue(item, 'description'),
-      Aplicação: itemValue(item, 'applications', []).join('; '),
-      Ano: itemValue(item, 'years', []).join('; '),
+      Aplicação: uniqueTextValues(itemValue(item, 'applications', [])).join('; '),
+      Ano: uniqueTextValues(itemValue(item, 'years', [])).join('; '),
       Preço: itemValue(item, 'price', null),
       'Estoque PR': itemValue(item, 'stock_pr', null),
       'Estoque SP': itemValue(item, 'stock_sp', null),

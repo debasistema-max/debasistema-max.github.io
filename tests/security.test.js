@@ -143,4 +143,14 @@ describe('contratos de autorização', () => {
     assert.doesNotMatch(migration, /not exists \([\s\S]*jsonb_array_elements\(rows\)/);
     assert.match(migration, /set statement_timeout = '60s'/);
   });
+
+  it('remove aplicações e anos duplicados antes de montar listas comerciais', () => {
+    const migration = readFileSync(new URL('../supabase/migrations/0016_deduplicate_commercial_list.sql', import.meta.url), 'utf8');
+    assert.match(migration, /row_number\(\) over/);
+    assert.match(migration, /product_applications_product_application_year_normalized_key/);
+    assert.match(migration, /rename to search_catalog_raw/);
+    assert.match(migration, /group by public\.normalize_search\(application_value\)/);
+    assert.match(migration, /group by public\.normalize_search\(year_value\)/);
+    assert.match(migration, /revoke all on function public\.search_catalog_raw/);
+  });
 });
