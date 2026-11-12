@@ -15,7 +15,7 @@ const payload = {
 test('lista comercial separa aplicação e ano e omite atualização', () => {
   const [row] = commercialRows(payload.items);
   assert.equal(row.Aplicação, 'Veículo / Modelo');
-  assert.equal(row.Ano, '2018/...');
+  assert.equal(row.Ano, '2018–...');
   assert.equal(Object.hasOwn(row, 'Atualização'), false);
   assert.equal(commercialRows([...payload.items, { ...payload.items[0] }]).length, 1);
 
@@ -25,6 +25,22 @@ test('lista comercial separa aplicação e ano e omite atualização', () => {
     'Código', 'Descrição', 'Aplicação', 'Ano', 'Preço', 'Estoque PR', 'Estoque SP', 'Disponibilidade'
   ]);
   assert.equal(Object.values(sheet).some((cell) => cell?.v === 'Atualização'), false);
+});
+
+test('lista comercial remove ano e grafias repetidas da aplicação', () => {
+  const [row] = commercialRows([{
+    code: 'ABC-2',
+    description: 'Produto',
+    applications: ['ASTRA; ASTRA 93/95', 'S-10 05/08; S10'],
+    years: ["'93-'95", '05/08', "'93-'95"],
+    price: 100,
+    stock_pr: 1,
+    stock_sp: 0,
+    stock_origin: 1
+  }]);
+
+  assert.equal(row.Aplicação, 'ASTRA; S-10');
+  assert.equal(row.Ano, '93–95; 05–08');
 });
 
 test('PDF da lista contém uma única tabela comercial com as novas colunas', () => {

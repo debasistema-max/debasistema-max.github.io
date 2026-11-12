@@ -64,6 +64,47 @@ export function uniqueTextValues(values) {
   return [...unique.values()];
 }
 
+function splitCommercialValues(values) {
+  return (Array.isArray(values) ? values : [values])
+    .flatMap((value) => String(value ?? '').split(/[;|\n\r•]+/))
+    .map((value) => value.trim().replace(/\s+/g, ' '))
+    .filter(Boolean);
+}
+
+function commercialTextKey(value) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('pt-BR')
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+export function commercialApplicationValues(values) {
+  const unique = new Map();
+  const trailingYear = /\s*\(?[\u2018\u2019']?\d{2,4}\s*[/\u2013\u2014-]\s*(?:[\u2018\u2019']?\d{2,4}|\.{3})\)?\s*\*?$/;
+  for (const value of splitCommercialValues(values)) {
+    const application = value.replace(trailingYear, '').trim().replace(/[,:/-]+$/, '').trim();
+    if (!application) continue;
+    const key = commercialTextKey(application);
+    if (key && !unique.has(key)) unique.set(key, application);
+  }
+  return [...unique.values()];
+}
+
+export function commercialYearValues(values) {
+  const unique = new Map();
+  for (const value of splitCommercialValues(values)) {
+    const year = value
+      .replace(/[\u2018\u2019']/g, '')
+      .replace(/\s*[/\u2013\u2014-]\s*/g, '\u2013')
+      .trim();
+    if (!year) continue;
+    const key = commercialTextKey(year);
+    if (key && !unique.has(key)) unique.set(key, year);
+  }
+  return [...unique.values()];
+}
+
 export function safeFileName(value) {
   return String(value || 'debaportal')
     .normalize('NFD')

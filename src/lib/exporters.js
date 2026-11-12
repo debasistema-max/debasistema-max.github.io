@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { money, safeFileName, stockLevel, uniqueTextValues } from './utils.js';
+import { commercialApplicationValues, commercialYearValues, money, safeFileName, stockLevel } from './utils.js';
 
 function triggerDownload(blob, fileName) {
   const url = URL.createObjectURL(blob);
@@ -45,8 +45,8 @@ export function commercialRows(items) {
     return {
       Código: itemValue(item, 'code'),
       Descrição: itemValue(item, 'description'),
-      Aplicação: uniqueTextValues(itemValue(item, 'applications', [])).join('; '),
-      Ano: uniqueTextValues(itemValue(item, 'years', [])).join('; '),
+      Aplicação: commercialApplicationValues(itemValue(item, 'applications', [])).join('; '),
+      Ano: commercialYearValues(itemValue(item, 'years', [])).join('; '),
       Preço: itemValue(item, 'price', null),
       'Estoque PR': itemValue(item, 'stock_pr', null),
       'Estoque SP': itemValue(item, 'stock_sp', null),
