@@ -177,4 +177,15 @@ describe('contratos de autorização', () => {
     assert.match(migration, /rename to search_catalog/);
     assert.match(migration, /grant execute[\s\S]*to authenticated/);
   });
+
+  it('aceita múltiplas categorias e linhas sem ampliar o acesso ao catálogo', () => {
+    const migration = readFileSync(new URL('../supabase/migrations/0018_multi_select_catalog_filters.sql', import.meta.url), 'utf8');
+    const api = readFileSync(new URL('../src/services/api.js', import.meta.url), 'utf8');
+    assert.match(migration, /p\.category = any\(string_to_array\(category_filter, chr\(31\)\)\)/);
+    assert.match(migration, /p\.product_line = any\(string_to_array\(line_filter, chr\(31\)\)\)/);
+    assert.match(migration, /if not public\.is_active_user\(\) then raise exception/);
+    assert.match(migration, /revoke all on function public\.search_catalog[\s\S]*from public,anon/);
+    assert.match(api, /encodeFilterSelection\(params\.category\)/);
+    assert.match(api, /encodeFilterSelection\(params\.line\)/);
+  });
 });

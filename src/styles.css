@@ -133,6 +133,23 @@ svg { display: block; width: 22px; height: 22px; }
 .filter-row label { min-width: 180px; flex: 1; }
 .filter-row input { padding: 9px 10px; }
 .filter-row .check-field { display: flex; align-items: center; gap: 8px; min-width: auto; min-height: 38px; padding: 0 6px; }
+.multi-filter { position: relative; min-width: 210px; flex: 1; }
+.multi-filter > summary { display: grid; gap: 6px; min-height: 61px; border: 1px solid var(--slate-300); border-radius: 10px; background: #fff; padding: 8px 38px 8px 12px; color: var(--slate-700); cursor: pointer; list-style: none; }
+.multi-filter > summary::-webkit-details-marker { display: none; }
+.multi-filter > summary::after { position: absolute; right: 14px; bottom: 14px; content: '⌄'; color: var(--slate-500); font-size: 1rem; transition: transform .15s; }
+.multi-filter[open] > summary { border-color: var(--blue-600); box-shadow: 0 0 0 3px rgba(37, 99, 166, .12); }
+.multi-filter[open] > summary::after { transform: rotate(180deg); }
+.multi-filter > summary span { font-size: .74rem; font-weight: 650; }
+.multi-filter > summary strong { overflow: hidden; color: #172033; font-size: .85rem; text-overflow: ellipsis; white-space: nowrap; }
+.multi-filter-menu { position: absolute; top: calc(100% + 7px); left: 0; z-index: 35; width: max(100%, 280px); max-width: min(360px, calc(100vw - 40px)); border: 1px solid var(--slate-200); border-radius: 12px; background: #fff; padding: 10px; box-shadow: 0 16px 40px rgba(11,31,58,.18); }
+.multi-filter-menu-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 2px 3px 9px; border-bottom: 1px solid var(--slate-200); color: var(--navy-900); font-size: .78rem; font-weight: 800; }
+.multi-filter-menu-head button { border: 0; background: transparent; color: var(--blue-600); padding: 4px; font-size: .72rem; font-weight: 750; }
+.multi-filter-menu-head button:disabled { color: var(--slate-400); }
+.multi-filter-options { display: grid; gap: 2px; max-height: 260px; overflow-y: auto; padding-top: 7px; }
+.multi-filter-options label { display: flex; align-items: center; flex: none; gap: 9px; min-width: 0; border-radius: 8px; padding: 8px; cursor: pointer; font-size: .78rem; font-weight: 600; }
+.multi-filter-options label:hover { background: var(--slate-100); }
+.multi-filter-options input { width: 17px; height: 17px; flex: 0 0 auto; margin: 0; padding: 0; accent-color: var(--navy-900); }
+.multi-filter-options p { margin: 8px; color: var(--slate-500); font-size: .76rem; }
 .check-field input { width: 17px; height: 17px; margin: 0; }
 .results-meta { display: flex; justify-content: space-between; margin: 12px 2px; color: var(--slate-500); font-size: .78rem; }
 .product-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
@@ -406,6 +423,9 @@ tbody tr:last-child td { border-bottom: 0; }
   .filter-row { display: grid; grid-template-columns: 1fr 1fr; }
   .filter-row label { min-width: 0; }
   .filter-row .check-field { grid-column: 1 / -1; }
+  .multi-filter { min-width: 0; }
+  .multi-filter-menu { position: fixed; top: auto; right: 14px; bottom: 14px; left: 14px; width: auto; max-width: none; max-height: 70vh; }
+  .multi-filter-options { max-height: calc(70vh - 62px); }
   .form-grid { grid-template-columns: 1fr; }
   .full-field { grid-column: 1; }
   .input-action { grid-template-columns: 1fr; }

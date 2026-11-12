@@ -9,6 +9,8 @@ function restoreSessionState() {
 }
 
 const restored = restoreSessionState();
+const restoredFilters = restored.filters || {};
+const restoredSelection = (value) => Array.isArray(value) ? value.filter(Boolean) : (value ? [value] : []);
 
 export const state = {
   ready: false,
@@ -26,7 +28,12 @@ export const state = {
   productPage: 1,
   pageSize: 20,
   query: '',
-  filters: { category: '', line: '', inStockOnly: false },
+  filters: {
+    category: restoredSelection(restoredFilters.category),
+    line: restoredSelection(restoredFilters.line),
+    inStockOnly: Boolean(restoredFilters.inStockOnly)
+  },
+  openFilter: '',
   listMode: 'all',
   listSelection: new Map(),
   carts: { order: [], quotation: [] },
@@ -52,7 +59,8 @@ export function persistSessionState() {
   sessionStorage.setItem(SESSION_KEY, JSON.stringify({
     destinationState: state.destinationState,
     originCode: state.originCode,
-    priceTableId: state.priceTableId
+    priceTableId: state.priceTableId,
+    filters: state.filters
   }));
 }
 

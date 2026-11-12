@@ -3,6 +3,7 @@ import { api } from './services/api.js';
 import { config, hasSupabaseConfig } from './config.js';
 import { formatCnpj, isValidCnpj, lookupCnpj } from './lib/cnpj.js';
 import { allowedOrigins, choosePriceTable, resolveCommercialContext } from './lib/commercial-context.js';
+import { normalizeFilterSelection, toggleFilterSelection } from './lib/catalog-filters.js';
 import { state, navigate, persistSessionState, setToast } from './state.js';
 import { STATES, commercialApplicationValues, commercialYearValues, escapeHtml, formatDateTime, integer, money, onlyDigits, stockLevel } from './lib/utils.js';
 
@@ -212,14 +213,28 @@ function renderHome() {
     <section class="status-strip"><div><span>Tabela atual</span><strong>${escapeHtml(currentTableName())}</strong></div><div><span>Destino / origem</span><strong>${state.destinationState} / ${state.originCode}</strong></div><div><span>Dados atualizados</span><strong>${escapeHtml(formatDateTime(state.lastSync?.finished_at || state.lastSync?.started_at))}</strong></div></section>`;
 }
 
-function filterOptions(values, selected, emptyLabel) {
-  return `<option value="">${emptyLabel}</option>${values.map((value) => `<option value="${escapeHtml(value)}" ${value === selected ? 'selected' : ''}>${escapeHtml(value)}</option>`).join('')}`;
+function multiFilter(label, filter, values) {
+  const selected = normalizeFilterSelection(state.filters[filter]);
+  const summary = selected.length === 0 ? 'Todas' : selected.length === 1 ? selected[0] : `${selected.length} selecionadas`;
+  return `<details class="multi-filter" name="catalog-filters" ${state.openFilter === filter ? 'open' : ''}>
+    <summary data-filter-summary="${filter}"><span>${label}</span><strong>${escapeHtml(summary)}</strong></summary>
+    <div class="multi-filter-menu">
+      <div class="multi-filter-menu-head"><span>${label}</span><button type="button" data-action="clear-multi-filter" data-filter-name="${filter}" ${selected.length ? '' : 'disabled'}>Limpar</button></div>
+      <div class="multi-filter-options">${values.length ? values.map((value) => `<label><input type="checkbox" data-multi-filter="${filter}" value="${escapeHtml(value)}" ${selected.includes(value) ? 'checked' : ''}><span>${escapeHtml(value)}</span></label>`).join('') : '<p>Nenhuma opção disponível.</p>'}</div>
+    </div>
+  </details>`;
+}
+
+function applyCatalogOptions(options) {
+  state.catalogOptions = options;
+  state.filters.category = normalizeFilterSelection(state.filters.category).filter((value) => options.categories.includes(value));
+  state.filters.line = normalizeFilterSelection(state.filters.line).filter((value) => options.lines.includes(value));
 }
 
 function searchControls(extra = '') {
   return `<section class="search-panel">
     <label class="search-field"><span class="sr-only">Pesquisar produtos</span>${icon('item')}<input id="product-query" value="${escapeHtml(state.query)}" placeholder="Código, descrição, veículo, modelo, aplicação ou sinônimo"><button type="button" data-action="search-products">Buscar</button></label>
-    <div class="filter-row"><label>Categoria<select data-filter="category">${filterOptions(state.catalogOptions.categories, state.filters.category, 'Todas as categorias')}</select></label><label>Linha<select data-filter="line">${filterOptions(state.catalogOptions.lines, state.filters.line, 'Todas as linhas')}</select></label><label>Disponibilidade<select data-filter="inStockOnly"><option value="false" ${!state.filters.inStockOnly ? 'selected' : ''}>Todos os itens</option><option value="true" ${state.filters.inStockOnly ? 'selected' : ''}>Somente disponíveis</option></select></label>${extra}</div>
+    <div class="filter-row">${multiFilter('Categorias', 'category', state.catalogOptions.categories)}${multiFilter('Linhas', 'line', state.catalogOptions.lines)}<label>Disponibilidade<select data-filter="inStockOnly"><option value="false" ${!state.filters.inStockOnly ? 'selected' : ''}>Todos os itens</option><option value="true" ${state.filters.inStockOnly ? 'selected' : ''}>Somente disponíveis</option></select></label>${extra}</div>
   </section>`;
 }
 
@@ -372,7 +387,7 @@ function cartMarkup(type, cart) {
 
 function renderLists() {
   const custom = state.listMode === 'custom';
-  const categoryPending = state.listMode === 'category' && !state.filters.category;
+  const categoryPending = state.listMode === 'category' && state.filters.category.length === 0;
   const exportDisabled = state.busy || (custom ? state.listSelection.size === 0 : state.productTotal === 0 || categoryPending);
   const actions = `<button class="button button-secondary" data-action="export-list" data-format="pdf" ${exportDisabled ? 'disabled' : ''}>Exportar PDF</button><button class="button button-primary" data-action="export-list" data-format="xlsx" ${exportDisabled ? 'disabled' : ''}>Exportar Excel</button>`;
   const selection = custom ? `<section class="list-selection-bar"><span><strong>${integer(state.listSelection.size)}</strong> produto(s) selecionado(s)</span><div><button class="button button-secondary button-small" data-action="select-visible-products">Selecionar esta página</button><button class="button button-ghost button-small" data-action="clear-list-selection" ${state.listSelection.size ? '' : 'disabled'}>Limpar seleção</button></div></section>` : '';
@@ -514,7 +529,7 @@ async function loadAuthenticatedContext() {
   const [profile, context, catalogOptions] = await Promise.all([api.getProfile(), api.loadContext(), api.getCatalogFilterOptions()]);
   state.profile = profile;
   state.priceTables = context.priceTables;
-  state.catalogOptions = catalogOptions;
+  applyCatalogOptions(catalogOptions);
   state.lastSync = context.lastSync;
   const resolved = resolveCommercialContext(state.priceTables, state);
   state.originCode = resolved.originCode;
@@ -762,6 +777,8 @@ root.addEventListener('click', async (event) => {
     updateView(); return;
   }
   const action = event.target.closest('[data-action]')?.dataset.action;
+  const filterSummary = event.target.closest('[data-filter-summary]');
+  if (filterSummary) state.openFilter = filterSummary.parentElement.open ? '' : filterSummary.dataset.filterSummary;
   const photoButton = event.target.closest('[data-product-photo]');
   if (photoButton && !photoButton.disabled) { openProductPhoto(photoButton); return; }
   if (action === 'close-product-photo') { document.querySelector('#product-photo-dialog')?.close(); return; }
@@ -798,7 +815,7 @@ root.addEventListener('click', async (event) => {
       const [catalogOptions] = await Promise.all([
         api.getCatalogFilterOptions(), loadAdminProducts(false), refreshProducts(false), revalidateCarts(false)
       ]);
-      state.catalogOptions = catalogOptions;
+      applyCatalogOptions(catalogOptions);
       setToast(`${changed} produto(s) ${activating ? 'reativado(s)' : 'inativado(s)'}.`, 'success');
     } catch (error) {
       setToast(error.message || `Não foi possível ${verb} os produtos.`, 'error');
@@ -808,6 +825,13 @@ root.addEventListener('click', async (event) => {
     return;
   }
   if (action === 'clear-list-selection') { state.listSelection.clear(); updateView(); return; }
+  if (action === 'clear-multi-filter') {
+    const filter = event.target.closest('[data-filter-name]').dataset.filterName;
+    state.filters[filter] = [];
+    state.openFilter = filter;
+    if (state.route === 'lists' && state.listMode !== 'custom') state.listMode = 'filtered';
+    state.productPage = 1; persistSessionState(); await refreshProducts(); return;
+  }
   if (action === 'dismiss-toast') { state.toast = null; updateView(); return; }
   if (action === 'toggle-nav') { document.querySelector('.side-nav')?.classList.toggle('open'); return; }
   if (action === 'sign-out') { clearPhotoCache(); state.listSelection.clear(); await api.signOut(); return; }
@@ -862,17 +886,18 @@ root.addEventListener('click', async (event) => {
     state.listMode = shortcut;
     if (shortcut === 'all') {
       state.query = '';
-      state.filters = { category: '', line: '', inStockOnly: false };
+      state.filters = { category: [], line: [], inStockOnly: false };
     } else if (shortcut === 'stock') {
       state.query = '';
-      state.filters = { category: '', line: '', inStockOnly: true };
+      state.filters = { category: [], line: [], inStockOnly: true };
     } else if (shortcut === 'category') {
       state.query = '';
-      state.filters.line = '';
+      state.filters.line = [];
       state.filters.inStockOnly = false;
-      if (!state.filters.category) setToast('Escolha a categoria desejada no filtro.', 'info');
+      state.openFilter = 'category';
+      if (!state.filters.category.length) setToast('Escolha uma ou mais categorias no filtro.', 'info');
     }
-    state.productPage = 1; await refreshProducts(); return;
+    state.productPage = 1; persistSessionState(); await refreshProducts(); return;
   }
   const convertButton = event.target.closest('[data-convert]');
   if (convertButton) {
@@ -930,8 +955,15 @@ root.addEventListener('change', async (event) => {
   const filter = event.target.dataset.filter;
   if (filter) {
     state.filters[filter] = filter === 'inStockOnly' ? event.target.value === 'true' : event.target.value;
-    if (state.route === 'lists' && state.listMode !== 'custom') state.listMode = filter === 'category' && event.target.value ? 'category' : 'filtered';
-    state.productPage = 1; await refreshProducts(); return;
+    if (state.route === 'lists' && state.listMode !== 'custom') state.listMode = 'filtered';
+    state.productPage = 1; persistSessionState(); await refreshProducts(); return;
+  }
+  const multiFilterName = event.target.dataset.multiFilter;
+  if (multiFilterName) {
+    state.filters[multiFilterName] = toggleFilterSelection(state.filters[multiFilterName], event.target.value, event.target.checked);
+    state.openFilter = multiFilterName;
+    if (state.route === 'lists' && state.listMode !== 'custom') state.listMode = multiFilterName === 'category' && state.filters.category.length ? 'category' : 'filtered';
+    state.productPage = 1; persistSessionState(); await refreshProducts(); return;
   }
   const listProductId = event.target.dataset.listProduct;
   if (listProductId) {
@@ -1026,8 +1058,8 @@ async function handleExportCurrent(type, format) {
   format === 'pdf' ? exportPdf(payload) : exportExcel(payload);
 }
 async function handleListExport(format) {
-  if (state.listMode === 'category' && !state.filters.category) {
-    setToast('Escolha uma categoria antes de exportar.', 'error'); updateView(); return;
+  if (state.listMode === 'category' && !state.filters.category.length) {
+    setToast('Escolha uma ou mais categorias antes de exportar.', 'error'); updateView(); return;
   }
   state.busy = true; updateView();
   try {
@@ -1044,10 +1076,12 @@ async function handleListExport(format) {
       });
     if (!items.length) throw new Error('Nenhum produto corresponde aos filtros selecionados.');
     const { exportExcel, exportPdf } = await import('./lib/exporters.js');
-    const titleSuffix = state.listMode === 'custom' ? 'personalizada'
-      : state.filters.category ? state.filters.category
-      : state.filters.line ? state.filters.line
-      : state.filters.inStockOnly ? 'disponíveis' : 'completa';
+    const filterTitle = [
+      state.filters.category.length ? state.filters.category.join(' + ') : '',
+      state.filters.line.length ? state.filters.line.join(' + ') : '',
+      state.filters.inStockOnly ? 'disponíveis' : ''
+    ].filter(Boolean).join(' - ');
+    const titleSuffix = state.listMode === 'custom' ? 'personalizada' : (filterTitle || 'completa');
     const payload = { title: `Lista comercial - ${titleSuffix}`, variant: 'commercial-list', items, context: { destinationState: state.destinationState, originCode: state.originCode, lines: COMMERCIAL_LINES } };
     format === 'pdf' ? exportPdf(payload) : exportExcel(payload);
     setToast(`${integer(items.length)} produto(s) exportado(s).`, 'success');
@@ -1134,7 +1168,7 @@ async function handleImport() {
     pendingImport = null;
     const [context, catalogOptions] = await Promise.all([api.loadContext(), api.getCatalogFilterOptions()]);
     state.lastSync = context.lastSync;
-    state.catalogOptions = catalogOptions;
+    applyCatalogOptions(catalogOptions);
     state.listSelection.clear();
     await refreshProducts(false);
     if (state.route === 'admin') await loadSyncHistory(false);
@@ -1153,7 +1187,7 @@ async function pollDriveSync(jobId) {
     if (job.status === 'CONCLUIDO') {
       const [context, catalogOptions] = await Promise.all([api.loadContext(), api.getCatalogFilterOptions()]);
       state.lastSync = context.lastSync;
-      state.catalogOptions = catalogOptions;
+      applyCatalogOptions(catalogOptions);
       state.listSelection.clear();
       clearPhotoCache();
       await refreshProducts(false);

@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { config, hasSupabaseConfig } from '../config.js';
+import { encodeFilterSelection, matchesFilterSelection } from '../lib/catalog-filters.js';
 import { uniqueTextValues, uuid } from '../lib/utils.js';
 
 const demoProducts = [
@@ -127,8 +128,8 @@ class SupabaseApi {
       destination_state: params.destinationState || null,
       origin_code: params.originCode || null,
       price_table_id: params.priceTableId || null,
-      category_filter: params.category || null,
-      line_filter: params.line || null,
+      category_filter: encodeFilterSelection(params.category),
+      line_filter: encodeFilterSelection(params.line),
       in_stock_only: Boolean(params.inStockOnly),
       page_number: params.page || 1,
       page_size: params.pageSize || 20
@@ -426,8 +427,8 @@ class DemoApi {
     const filtered = demoProducts.filter((product) => {
       const haystack = [product.code, product.description, product.category, product.product_line, ...product.applications].join(' ').toLowerCase();
       const originStock = params.originCode === 'PR' ? product.stock_pr : product.stock_sp;
-      return (!term || haystack.includes(term)) && (!params.category || product.category === params.category)
-        && (!params.line || product.product_line === params.line) && (!params.inStockOnly || originStock > 0);
+      return (!term || haystack.includes(term)) && matchesFilterSelection(product.category, params.category)
+        && matchesFilterSelection(product.product_line, params.line) && (!params.inStockOnly || originStock > 0);
     });
     const start = ((params.page || 1) - 1) * (params.pageSize || 20);
     return {
