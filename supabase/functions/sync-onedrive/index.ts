@@ -126,18 +126,19 @@ async function secureWorkbookDownload(req: Request, jobId: string, retryFailed: 
   }
 
   const redirectResponse = await fetchWithRetry(`${GRAPH_ROOT}/items/${encodeURIComponent(item.id)}/content`, {
-    headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
+    headers: { Authorization: `Bearer ${token}`, Accept: "*/*", "Cache-Control": "no-store" },
     redirect: "manual",
+    cache: "no-store",
   });
   const downloadUrl = redirectResponse.headers.get("location");
   if (!downloadUrl || ![301, 302, 303, 307, 308].includes(redirectResponse.status)) {
     throw new Error(`Microsoft nao forneceu o download seguro (${redirectResponse.status}).`);
   }
-  const response = await fetchWithRetry(downloadUrl, {
-    headers: { Accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
-    redirect: "follow",
-  });
-  if (!response.ok) throw new Error(`Download seguro do OneDrive falhou (${response.status}).`);
+  const response = await fetchWithRetry(downloadUrl, { redirect: "follow", cache: "no-store" });
+  if (!response.ok) {
+    const downloadHost = new URL(downloadUrl).hostname.replace(/[^a-z0-9.-]/gi, "");
+    throw new Error(`Download seguro do OneDrive falhou (${response.status} em ${downloadHost}).`);
+  }
   const bytes = await response.arrayBuffer();
   if (bytes.byteLength !== Number(item.size) || bytes.byteLength > 20_000_000) {
     throw new Error("Arquivo baixado incompleto ou fora do limite.");

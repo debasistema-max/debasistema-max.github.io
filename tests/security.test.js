@@ -102,6 +102,7 @@ describe('contratos de autorização', () => {
     assert.match(syncFunction, /Cache-Control": "no-store"/);
     assert.match(syncFunction, /redirect: "manual"/);
     assert.match(syncFunction, /fetchWithRetry\(downloadUrl/);
+    assert.match(syncFunction, /hostname\.replace/);
     assert.match(syncFunction, /RETRYABLE_STATUS = new Set\(\[429, 500, 502, 503, 504\]\)/);
     assert.match(syncFunction, /fetchWithRetry/);
     assert.match(syncScript, /functions\/v1\/sync-onedrive/);
