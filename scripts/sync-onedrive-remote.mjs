@@ -78,7 +78,7 @@ try {
   const fileResponse = await fetch(`${supabaseUrl}/functions/v1/sync-onedrive`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ action: "download", job_id: jobId }),
+    body: JSON.stringify({ action: "download", job_id: jobId, retry_failed: job.status === "FALHOU" }),
   });
   if (!fileResponse.ok) {
     const failure = await fileResponse.json().catch(() => ({}));

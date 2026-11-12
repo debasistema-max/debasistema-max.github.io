@@ -10,7 +10,11 @@ type GraphItem = {
   file?: { mimeType?: string };
   folder?: { childCount?: number };
 };
-type SyncRequest = { action?: "dispatch" | "dispatch_photos" | "check" | "download"; job_id?: string };
+type SyncRequest = {
+  action?: "dispatch" | "dispatch_photos" | "check" | "download";
+  job_id?: string;
+  retry_failed?: boolean;
+};
 
 const GRAPH_ROOT = "https://graph.microsoft.com/v1.0/me/drive";
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
@@ -93,7 +97,7 @@ async function hasServiceRole(req: Request): Promise<boolean> {
   return !error;
 }
 
-async function secureWorkbookDownload(req: Request, jobId: string): Promise<Response> {
+async function secureWorkbookDownload(req: Request, jobId: string, retryFailed: boolean): Promise<Response> {
   if (!(await hasServiceRole(req))) return jsonResponse(req, { error: "Acesso de backend obrigatorio." }, 403);
   if (!/^[0-9a-f-]{36}$/i.test(jobId)) return jsonResponse(req, { error: "Solicitacao invalida." }, 400);
 
@@ -113,7 +117,12 @@ async function secureWorkbookDownload(req: Request, jobId: string): Promise<Resp
   if ((item.size ?? 0) <= 0 || (item.size ?? 0) > 20_000_000) throw new Error("Arquivo fora do limite permitido.");
   if (Number(job.source_size) !== Number(item.size)
     || String(job.source_modified || "") !== String(item.lastModifiedDateTime || "")) {
-    throw new Error("A planilha foi alterada depois da solicitacao. Solicite uma nova sincronizacao.");
+    if (!retryFailed) throw new Error("A planilha foi alterada depois da solicitacao. Solicite uma nova sincronizacao.");
+    const { error: refreshError } = await admin.from("sync_jobs").update({
+      source_size: item.size ?? null,
+      source_modified: item.lastModifiedDateTime ?? null,
+    }).eq("id", jobId);
+    if (refreshError) throw new Error("Nao foi possivel atualizar a referencia da planilha para repeticao.");
   }
 
   const response = await fetchWithRetry(`${GRAPH_ROOT}/items/${encodeURIComponent(item.id)}/content`, {
@@ -143,7 +152,9 @@ Deno.serve(async (req) => {
 
   try {
     const input = await req.json().catch(() => ({})) as SyncRequest;
-    if (input.action === "download") return await secureWorkbookDownload(req, String(input.job_id || ""));
+    if (input.action === "download") {
+      return await secureWorkbookDownload(req, String(input.job_id || ""), input.retry_failed === true);
+    }
 
     const { user } = await requireAdmin(req);
     const photosOnly = input.action === "dispatch_photos";
