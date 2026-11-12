@@ -4,11 +4,11 @@ import { encodeFilterSelection, matchesFilterSelection } from '../lib/catalog-fi
 import { uniqueTextValues, uuid } from '../lib/utils.js';
 
 const demoProducts = [
-  { id: 'p1', code: 'DP-1001', description: 'Amortecedor dianteiro', applications: ['Veículo compacto'], years: ['2018 a 2024'], category: 'Suspensão', product_line: 'Amortecedores', price: 289.9, stock_pr: 86, stock_sp: 42, total_stock: 128 },
-  { id: 'p2', code: 'DP-1020', description: 'Kit de suspensão traseira', applications: ['Utilitário leve'], years: ['2019 a 2025'], category: 'Suspensão', product_line: 'Kits', price: 419.5, stock_pr: 12, stock_sp: 4, total_stock: 16 },
-  { id: 'p3', code: 'DP-2044', description: 'Terminal de direção', applications: ['Sedã médio'], years: ['2016 a 2023'], category: 'Direção', product_line: 'Terminais', price: 98.75, stock_pr: 0, stock_sp: 0, total_stock: 0 },
-  { id: 'p4', code: 'DP-3108', description: 'Bieleta estabilizadora', applications: ['SUV compacto'], years: ['2020 a 2026'], category: 'Suspensão', product_line: 'Bieletas', price: 74.2, stock_pr: 31, stock_sp: 55, total_stock: 86 },
-  { id: 'p5', code: 'DP-4400', description: 'Coxim superior', applications: ['Hatch'], years: ['2015 a 2022'], category: 'Suspensão', product_line: 'Coxins', price: 132, stock_pr: 8, stock_sp: 0, total_stock: 8 }
+  { id: 'p1', code: 'DP-1001', description: 'Amortecedor dianteiro', applications: ['Veículo compacto'], years: ['2018 a 2024'], category: 'Suspensão', product_line: 'Leve', brand: 'Marca A', price: 289.9, stock_pr: 86, stock_sp: 42, total_stock: 128 },
+  { id: 'p2', code: 'DP-1020', description: 'Kit de suspensão traseira', applications: ['Utilitário leve'], years: ['2019 a 2025'], category: 'Suspensão', product_line: 'Utilitário', brand: 'Marca B', price: 419.5, stock_pr: 12, stock_sp: 4, total_stock: 16 },
+  { id: 'p3', code: 'DP-2044', description: 'Terminal de direção', applications: ['Sedã médio'], years: ['2016 a 2023'], category: 'Direção', product_line: 'Leve', brand: 'Marca C', price: 98.75, stock_pr: 0, stock_sp: 0, total_stock: 0 },
+  { id: 'p4', code: 'DP-3108', description: 'Bieleta estabilizadora', applications: ['Caminhão'], years: ['2020 a 2026'], category: 'Suspensão', product_line: 'Pesada', brand: 'Marca A', price: 74.2, stock_pr: 31, stock_sp: 55, total_stock: 86 },
+  { id: 'p5', code: 'DP-4400', description: 'Coxim superior', applications: ['Hatch'], years: ['2015 a 2022'], category: 'Suspensão', product_line: 'Leve', brand: 'Marca B', price: 132, stock_pr: 8, stock_sp: 0, total_stock: 8 }
 ];
 
 function normalizeProduct(row) {
@@ -20,7 +20,8 @@ function normalizeProduct(row) {
     applications: uniqueTextValues(Array.isArray(row.applications) ? row.applications : [row.application || row.aplicacao || '']),
     years: uniqueTextValues(Array.isArray(row.application_years) ? row.application_years : (Array.isArray(row.years) ? row.years : [row.year || row.ano || ''])),
     category: row.category || row.categoria || '',
-    product_line: row.product_line || row.linha || '',
+    product_line: row.commercial_line ?? row.product_line ?? row.linha ?? '',
+    brand: row.brand ?? row.marca ?? (row.commercial_line !== undefined ? row.product_line : ''),
     price: nullableNumber(row.price ?? row.preco),
     stock_pr: nullableNumber(row.stock_pr ?? row.estoque_pr),
     stock_sp: nullableNumber(row.stock_sp ?? row.estoque_sp),
@@ -130,6 +131,7 @@ class SupabaseApi {
       price_table_id: params.priceTableId || null,
       category_filter: encodeFilterSelection(params.category),
       line_filter: encodeFilterSelection(params.line),
+      brand_filter: encodeFilterSelection(params.brand),
       in_stock_only: Boolean(params.inStockOnly),
       page_number: params.page || 1,
       page_size: params.pageSize || 20
@@ -157,14 +159,14 @@ class SupabaseApi {
     const rows = [];
     for (let from = 0; from < 10000; from += 1000) {
       const { data, error } = await this.client.from('products')
-        .select('category,product_line').eq('active', true).eq('admin_inactive', false).range(from, from + 999);
+        .select('category,product_line,commercial_line').eq('active', true).eq('admin_inactive', false).range(from, from + 999);
       if (error) throw error;
       rows.push(...(data || []));
       if (!data || data.length < 1000) break;
     }
     const values = (key) => [...new Set(rows.map((row) => String(row[key] || '').trim()).filter(Boolean))]
       .sort((a, b) => a.localeCompare(b, 'pt-BR'));
-    return { categories: values('category'), lines: values('product_line') };
+    return { categories: values('category'), lines: ['Leve', 'Pesada', 'Utilitário'], brands: values('product_line') };
   }
 
   async saveDocument(type, draft, items, context) {
@@ -425,10 +427,11 @@ class DemoApi {
   async searchProducts(params) {
     const term = String(params.query || '').toLowerCase();
     const filtered = demoProducts.filter((product) => {
-      const haystack = [product.code, product.description, product.category, product.product_line, ...product.applications].join(' ').toLowerCase();
+      const haystack = [product.code, product.description, product.category, product.product_line, product.brand, ...product.applications].join(' ').toLowerCase();
       const originStock = params.originCode === 'PR' ? product.stock_pr : product.stock_sp;
       return (!term || haystack.includes(term)) && matchesFilterSelection(product.category, params.category)
-        && matchesFilterSelection(product.product_line, params.line) && (!params.inStockOnly || originStock > 0);
+        && matchesFilterSelection(product.product_line, params.line) && matchesFilterSelection(product.brand, params.brand)
+        && (!params.inStockOnly || originStock > 0);
     });
     const start = ((params.page || 1) - 1) * (params.pageSize || 20);
     return {
@@ -445,7 +448,7 @@ class DemoApi {
   }
   async getCatalogFilterOptions() {
     const values = (key) => [...new Set(demoProducts.map((row) => row[key]).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
-    return { categories: values('category'), lines: values('product_line') };
+    return { categories: values('category'), lines: ['Leve', 'Pesada', 'Utilitário'], brands: values('brand') };
   }
   async saveDocument(type, draft, items, context) {
     const total = items.reduce((sum, item) => sum + item.quantity * item.product.price, 0);

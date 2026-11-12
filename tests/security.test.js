@@ -100,8 +100,8 @@ describe('contratos de autorização', () => {
     assert.match(main, /state\.listSelection/);
     assert.match(main, /api\.searchAllProducts/);
     assert.match(api, /async searchAllProducts\(params/);
-    assert.match(api, /select\('category,product_line'\)\.eq\('active', true\)/);
-    assert.doesNotMatch(api, /select\('category,product_line,price/);
+    assert.match(api, /select\('category,product_line,commercial_line'\)\.eq\('active', true\)/);
+    assert.doesNotMatch(api, /select\('category,product_line,commercial_line,price/);
   });
 
   it('mantém a inativação em lote entre sincronizações e oculta os itens comercialmente', () => {
@@ -187,5 +187,16 @@ describe('contratos de autorização', () => {
     assert.match(migration, /revoke all on function public\.search_catalog[\s\S]*from public,anon/);
     assert.match(api, /encodeFilterSelection\(params\.category\)/);
     assert.match(api, /encodeFilterSelection\(params\.line\)/);
+  });
+
+  it('separa linha comercial e marca mantendo os filtros protegidos', () => {
+    const migration = readFileSync(new URL('../supabase/migrations/0019_product_brand_and_commercial_line.sql', import.meta.url), 'utf8');
+    const api = readFileSync(new URL('../src/services/api.js', import.meta.url), 'utf8');
+    assert.match(migration, /add column if not exists commercial_line text/);
+    assert.match(migration, /commercial_line in \('Leve', 'Pesada', 'Utilitário'\)/);
+    assert.match(migration, /p\.commercial_line = any\(string_to_array\(line_filter, chr\(31\)\)\)/);
+    assert.match(migration, /p\.product_line = any\(string_to_array\(brand_filter, chr\(31\)\)\)/);
+    assert.match(migration, /if not public\.is_active_user\(\) then raise exception/);
+    assert.match(api, /brand_filter: encodeFilterSelection\(params\.brand\)/);
   });
 });

@@ -4,6 +4,10 @@ const FORBIDDEN_BRANDS = new RegExp(
   `\\b(?:${["I", "P", "S"].join("")}(?:\\s+do\\s+Brasil)?|${["Yoko", "mitsu"].join("")}|${["R", "T"].join("\\s*")}\\s*Group)\\b`,
   "gi",
 );
+const FORBIDDEN_COMPANY_IDENTITIES = new RegExp(
+  `\\b(?:${["I", "P", "S"].join("")}(?:\\s+do\\s+Brasil)?|${["R", "T"].join("\\s*")}\\s*Group)\\b`,
+  "gi",
+);
 
 function cleanText(value, max = 2_000) {
   return String(value ?? "").trim().replace(/\s+/g, " ").slice(0, max);
@@ -15,6 +19,25 @@ export function publicText(value, max = 2_000) {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, max);
+}
+
+export function productBrandText(value, max = 200) {
+  return cleanText(value, max)
+    .replace(FORBIDDEN_COMPANY_IDENTITIES, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, max);
+}
+
+export function commercialLine(value) {
+  const normalized = cleanText(value, 100)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  if (/^(?:u|utilitario|utilitarios)$|\butilit/.test(normalized)) return "Utilitário";
+  if (/^(?:p|pesada|pesado|pesadas|pesados)$|\b(?:pesad|caminh|onibus|truck)/.test(normalized)) return "Pesada";
+  if (/^(?:l|leve|leves)$|\b(?:leve|passeio)/.test(normalized)) return "Leve";
+  return "";
 }
 
 function headerKey(value) {
@@ -123,6 +146,14 @@ function valueAt(row, columns, name) {
   return index === undefined ? "" : row[index];
 }
 
+function valueAtAny(row, columns, names) {
+  for (const name of names) {
+    const value = valueAt(row, columns, name);
+    if (cleanText(value)) return value;
+  }
+  return "";
+}
+
 function ensureProduct(store, code) {
   let product = store.get(code);
   if (!product) {
@@ -131,6 +162,7 @@ function ensureProduct(store, code) {
       description: "",
       category: "",
       product_line: "",
+      commercial_line: "",
       synonyms: new Set(),
       applications: new Map(),
       basePrice: null,
@@ -155,7 +187,13 @@ function addApplication(product, application, { model = "", year = "" } = {}) {
 }
 
 function assertPublicFields(datasets) {
-  const serialized = JSON.stringify(datasets);
+  const withoutProductBrands = datasets.map((dataset) => ({
+    ...dataset,
+    rows: dataset.kind === "PRODUTOS"
+      ? dataset.rows.map((row) => ({ ...row, product_line: "" }))
+      : dataset.rows,
+  }));
+  const serialized = JSON.stringify(withoutProductBrands);
   FORBIDDEN_BRANDS.lastIndex = 0;
   if (FORBIDDEN_BRANDS.test(serialized)) {
     throw new Error("A normalizacao manteve uma marca empresarial proibida.");
@@ -175,7 +213,11 @@ export function parsePortalWorkbook(XLSX, bytes, name, maxRows = 50_000) {
       if (!code) continue;
       const product = ensureProduct(products, code);
       product.description ||= publicText(valueAt(row, matrixHeader.columns, "descricao"));
-      product.product_line ||= publicText(valueAt(row, matrixHeader.columns, "marca"), 200);
+      product.product_line ||= productBrandText(valueAt(row, matrixHeader.columns, "marca"), 200);
+      product.commercial_line ||= commercialLine(valueAtAny(row, matrixHeader.columns, [
+        "linha", "segmento", "tipo", "tipo veiculo", "linha veiculo", "linha de produto",
+        "categoria veiculo", "categoria de veiculo", "segmento veiculo", "classificacao",
+      ]));
       product.basePrice ??= finiteNumber(valueAt(row, matrixHeader.columns, "preco s imp"));
       product.ipiRate ??= valueAt(row, matrixHeader.columns, "ipi") || null;
       const application = publicText(valueAt(row, matrixHeader.columns, "aplicacao"));
@@ -194,8 +236,12 @@ export function parsePortalWorkbook(XLSX, bytes, name, maxRows = 50_000) {
       const product = ensureProduct(products, code);
       product.description ||= publicText(valueAt(row, sapHeader.columns, "descricao do item"));
       product.category ||= publicText(valueAt(row, sapHeader.columns, "grupo de itens"), 200);
-      product.product_line ||= publicText(valueAt(row, sapHeader.columns, "marca"), 200)
-        || publicText(valueAt(row, sapHeader.columns, "fabricante"), 200);
+      product.product_line ||= productBrandText(valueAt(row, sapHeader.columns, "marca"), 200)
+        || productBrandText(valueAt(row, sapHeader.columns, "fabricante"), 200);
+      product.commercial_line ||= commercialLine(valueAtAny(row, sapHeader.columns, [
+        "linha", "segmento", "tipo", "tipo veiculo", "linha veiculo", "linha de produto",
+        "categoria veiculo", "categoria de veiculo", "segmento veiculo", "classificacao",
+      ]));
       product.ipiRate ??= valueAt(row, sapHeader.columns, "ipi") || null;
       const model = publicText(valueAt(row, sapHeader.columns, "modelo"), 300);
       const year = publicText(valueAt(row, sapHeader.columns, "ano"), 100);
@@ -274,6 +320,7 @@ export function parsePortalWorkbook(XLSX, bytes, name, maxRows = 50_000) {
       description: product.description,
       category: product.category,
       product_line: product.product_line,
+      commercial_line: product.commercial_line,
       synonyms: [...product.synonyms],
       applications: [...product.applications.values()],
     }));

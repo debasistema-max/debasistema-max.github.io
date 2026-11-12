@@ -229,12 +229,13 @@ function applyCatalogOptions(options) {
   state.catalogOptions = options;
   state.filters.category = normalizeFilterSelection(state.filters.category).filter((value) => options.categories.includes(value));
   state.filters.line = normalizeFilterSelection(state.filters.line).filter((value) => options.lines.includes(value));
+  state.filters.brand = normalizeFilterSelection(state.filters.brand).filter((value) => options.brands.includes(value));
 }
 
 function searchControls(extra = '') {
   return `<section class="search-panel">
     <label class="search-field"><span class="sr-only">Pesquisar produtos</span>${icon('item')}<input id="product-query" value="${escapeHtml(state.query)}" placeholder="Código, descrição, veículo, modelo, aplicação ou sinônimo"><button type="button" data-action="search-products">Buscar</button></label>
-    <div class="filter-row">${multiFilter('Categorias', 'category', state.catalogOptions.categories)}${multiFilter('Linhas', 'line', state.catalogOptions.lines)}<label>Disponibilidade<select data-filter="inStockOnly"><option value="false" ${!state.filters.inStockOnly ? 'selected' : ''}>Todos os itens</option><option value="true" ${state.filters.inStockOnly ? 'selected' : ''}>Somente disponíveis</option></select></label>${extra}</div>
+    <div class="filter-row">${multiFilter('Categorias', 'category', state.catalogOptions.categories)}${multiFilter('Linhas', 'line', state.catalogOptions.lines)}${multiFilter('Marcas', 'brand', state.catalogOptions.brands)}<label>Disponibilidade<select data-filter="inStockOnly"><option value="false" ${!state.filters.inStockOnly ? 'selected' : ''}>Todos os itens</option><option value="true" ${state.filters.inStockOnly ? 'selected' : ''}>Somente disponíveis</option></select></label>${extra}</div>
   </section>`;
 }
 
@@ -289,7 +290,7 @@ function productCard(product, mode, cartType) {
     <div class="product-top"><span class="code-chip">${escapeHtml(product.code)}</span><span class="stock-badge stock-${level.key}"><i></i>${escapeHtml(level.label)}</span></div>
     <h3>${escapeHtml(product.description)}</h3>
     <p>${escapeHtml(product.applications.join(' · ') || 'Aplicação não informada')}</p>
-    <div class="product-tags"><span>${escapeHtml(product.category || 'Sem categoria')}</span><span>${escapeHtml(product.product_line || 'Sem linha')}</span></div>
+    <div class="product-tags"><span>${escapeHtml(product.category || 'Sem categoria')}</span><span>${escapeHtml(product.product_line || 'Sem linha')}</span>${product.brand ? `<span>${escapeHtml(product.brand)}</span>` : ''}</div>
     <div class="stock-grid"><div class="${state.originCode === 'PR' ? 'stock-selected' : ''}"><span>PR${state.originCode === 'PR' ? ' · envio' : ''}</span><strong>${integer(product.stock_pr)}</strong></div><div class="${state.originCode === 'SP' ? 'stock-selected' : ''}"><span>SP${state.originCode === 'SP' ? ' · envio' : ''}</span><strong>${integer(product.stock_sp)}</strong></div><div class="price ${product.price === null ? 'price-missing' : ''}"><span>Preço</span><strong>${price}</strong></div></div>
     ${mode === 'list' ? (state.listMode === 'custom' ? `<label class="list-product-select"><input type="checkbox" data-list-product="${product.id}" ${state.listSelection.has(product.id) ? 'checked' : ''}> Incluir na lista personalizada</label>` : '') : `<div class="product-actions">${mode === 'item' ? `<button class="button button-secondary" data-add-product="${product.id}" data-cart="quotation">+ Cotação</button><button class="button button-primary" data-add-product="${product.id}" data-cart="order">+ Pedido</button>` : `<button class="button button-primary button-full" data-add-product="${product.id}" data-cart="${cartType}">Adicionar</button>`}</div>`}
   </article>`;
@@ -482,10 +483,11 @@ function productsAdminPanel() {
     <td data-label="Descrição">${escapeHtml(product.description)}</td>
     <td data-label="Categoria">${escapeHtml(product.category || '—')}</td>
     <td data-label="Linha">${escapeHtml(product.product_line || '—')}</td>
+    <td data-label="Marca">${escapeHtml(product.brand || '—')}</td>
     <td data-label="Situação"><span class="status-chip ${inactive ? 'status-chip-inactive' : ''}">${inactive ? 'Inativo' : 'Ativo'}</span></td>
   </tr>`).join('');
   const table = catalog.items.length
-    ? `<div class="table-wrap"><table class="admin-products-table"><thead><tr><th></th><th>Código</th><th>Descrição</th><th>Categoria</th><th>Linha</th><th>Situação</th></tr></thead><tbody>${rows}</tbody></table></div>`
+    ? `<div class="table-wrap"><table class="admin-products-table"><thead><tr><th></th><th>Código</th><th>Descrição</th><th>Categoria</th><th>Linha</th><th>Marca</th><th>Situação</th></tr></thead><tbody>${rows}</tbody></table></div>`
     : `<div class="empty-state"><strong>Nenhum produto ${inactive ? 'inativo' : 'ativo'} encontrado</strong><span>Ajuste a pesquisa ou altere a visualização.</span></div>`;
   return `<section class="panel admin-card admin-wide"><div class="section-title"><span>8</span><div><h2>Ativação de produtos</h2><p>Selecione vários itens para ocultá-los do portal ou reativá-los. A escolha é preservada nas próximas sincronizações.</p></div></div>
     <form id="admin-product-search-form" class="admin-product-search"><input name="query" value="${escapeHtml(catalog.query)}" placeholder="Pesquisar por código ou descrição"><select name="status"><option value="ATIVOS" ${inactive ? '' : 'selected'}>Itens ativos</option><option value="INATIVOS" ${inactive ? 'selected' : ''}>Itens inativos</option></select><button class="button button-secondary" type="submit">Pesquisar</button></form>
@@ -550,7 +552,7 @@ async function refreshProducts(shouldRender = true) {
   if (shouldRender) updateView();
   try {
     const result = await api.searchProducts({ query: state.query, destinationState: state.destinationState, originCode: state.originCode,
-      priceTableId: state.priceTableId, category: state.filters.category, line: state.filters.line,
+      priceTableId: state.priceTableId, category: state.filters.category, line: state.filters.line, brand: state.filters.brand,
       inStockOnly: state.filters.inStockOnly, page: state.productPage, pageSize: state.pageSize });
     state.products = result.items;
     state.productTotal = result.total;
@@ -582,6 +584,7 @@ async function revalidateCarts(shouldRender = true) {
         priceTableId: state.priceTableId,
         category: '',
         line: '',
+        brand: '',
         inStockOnly: false,
         page: 1,
         pageSize: 100
@@ -886,10 +889,10 @@ root.addEventListener('click', async (event) => {
     state.listMode = shortcut;
     if (shortcut === 'all') {
       state.query = '';
-      state.filters = { category: [], line: [], inStockOnly: false };
+      state.filters = { category: [], line: [], brand: [], inStockOnly: false };
     } else if (shortcut === 'stock') {
       state.query = '';
-      state.filters = { category: [], line: [], inStockOnly: true };
+      state.filters = { category: [], line: [], brand: [], inStockOnly: true };
     } else if (shortcut === 'category') {
       state.query = '';
       state.filters.line = [];
@@ -1072,6 +1075,7 @@ async function handleListExport(format) {
         priceTableId: state.priceTableId,
         category: state.filters.category,
         line: state.filters.line,
+        brand: state.filters.brand,
         inStockOnly: state.filters.inStockOnly
       });
     if (!items.length) throw new Error('Nenhum produto corresponde aos filtros selecionados.');
@@ -1079,6 +1083,7 @@ async function handleListExport(format) {
     const filterTitle = [
       state.filters.category.length ? state.filters.category.join(' + ') : '',
       state.filters.line.length ? state.filters.line.join(' + ') : '',
+      state.filters.brand.length ? state.filters.brand.join(' + ') : '',
       state.filters.inStockOnly ? 'disponíveis' : ''
     ].filter(Boolean).join(' - ');
     const titleSuffix = state.listMode === 'custom' ? 'personalizada' : (filterTitle || 'completa');
@@ -1105,6 +1110,7 @@ async function handleSapValidationExport() {
       priceTableId: state.priceTableId,
       category: '',
       line: '',
+      brand: '',
       inStockOnly: false
     });
     const { sampleProductsByLine } = await import('./lib/sap-validation.js');

@@ -7,6 +7,7 @@ import {
   finiteNumber,
   parsePortalWorkbook,
   percentageRate,
+  productBrandText,
   publicText,
 } from "../scripts/lib/catalog-workbook.mjs";
 
@@ -24,6 +25,8 @@ test("remove marcas empresariais de campos publicos", () => {
   ].join(" ");
   assert.equal(publicText(`Produto ${blocked}`), "Produto");
   assert.equal(publicText("Aplicacao normal"), "Aplicacao normal");
+  assert.equal(productBrandText(["Yoko", "mitsu"].join("")), ["Yoko", "mitsu"].join(""));
+  assert.equal(productBrandText(["I", "P", "S"].join("")), "");
 });
 
 test("consolida estoque repetido por produto e filial", () => {
@@ -111,4 +114,27 @@ test("mantém aplicação e ano em campos separados", () => {
   const product = datasets.find((dataset) => dataset.kind === "PRODUTOS").rows[0];
 
   assert.deepEqual(product.applications, [{ application: "Veículo / Modelo", year: "2018/..." }]);
+});
+
+test("separa marca da linha comercial do produto", () => {
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ["CODIGO", "DESCRICAO", "MARCA", "LINHA", "PRECO S/IMP", "IPI"],
+    ["ABC-3", "Produto com marca", ["Yoko", "mitsu"].join(""), "Utilitarios", 100, "10%"],
+  ]), "MATRIZ");
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ["CODIGO", "DESCRICAO", "PRECO S/IMP", "PRECO C/IMPOSTOS"],
+    ["ABC-3", "Produto com marca", 100, 110],
+  ]), "LISTA PR-PR");
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ["CODIGO", "ESTOQUE", "DISP GERAL"],
+    ["ABC-3", 5, 5],
+  ]), "PORTAL ESTOQUE PR");
+
+  const bytes = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+  const { datasets } = parsePortalWorkbook(XLSX, bytes, "marca-linha.xlsx");
+  const product = datasets.find((dataset) => dataset.kind === "PRODUTOS").rows[0];
+
+  assert.equal(product.product_line, ["Yoko", "mitsu"].join(""));
+  assert.equal(product.commercial_line, "Utilitário");
 });

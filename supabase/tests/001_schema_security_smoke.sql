@@ -27,7 +27,7 @@ do $$
 declare
   signature text;
   required_functions text[] := array[
-    'public.search_catalog(text,text,text,uuid,text,text,boolean,integer,integer)',
+    'public.search_catalog(text,text,text,uuid,text,text,text,boolean,integer,integer)',
     'public.save_commercial_document(jsonb,jsonb)',
     'public.convert_quotation_to_order(uuid)',
     'public.set_profile_access(uuid,uuid[],uuid[])',

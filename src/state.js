@@ -21,7 +21,7 @@ export const state = {
   originCode: restored.originCode || 'SP',
   priceTableId: restored.priceTableId || '',
   priceTables: [],
-  catalogOptions: { categories: [], lines: [] },
+  catalogOptions: { categories: [], lines: [], brands: [] },
   lastSync: null,
   products: [],
   productTotal: 0,
@@ -31,6 +31,7 @@ export const state = {
   filters: {
     category: restoredSelection(restoredFilters.category),
     line: restoredSelection(restoredFilters.line),
+    brand: restoredSelection(restoredFilters.brand),
     inStockOnly: Boolean(restoredFilters.inStockOnly)
   },
   openFilter: '',
