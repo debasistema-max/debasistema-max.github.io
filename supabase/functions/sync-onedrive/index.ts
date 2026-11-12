@@ -129,7 +129,11 @@ async function secureWorkbookDownload(req: Request, jobId: string, retryFailed: 
 
   const downloadUrl = item["@microsoft.graph.downloadUrl"];
   if (!downloadUrl) throw new Error("Microsoft nao forneceu a URL de download pre-autorizada.");
-  const response = await fetchWithRetry(downloadUrl, { redirect: "follow", cache: "no-store" });
+  const response = await fetchWithRetry(downloadUrl, {
+    redirect: "follow",
+    cache: "no-store",
+    headers: { Range: "bytes=0-" },
+  });
   if (!response.ok) {
     const downloadHost = new URL(downloadUrl).hostname.replace(/[^a-z0-9.-]/gi, "");
     throw new Error(`Download seguro do OneDrive falhou (${response.status} em ${downloadHost}).`);
