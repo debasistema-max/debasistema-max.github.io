@@ -27,6 +27,8 @@ async function updateJob(patch) {
 }
 
 async function importDataset(dataset, sourceName) {
+  const startedAt = Date.now();
+  console.log(`${dataset.kind}: iniciando ${dataset.rows.length} linhas.`);
   const response = await fetch(`${supabaseUrl}/rest/v1/rpc/import_catalog_batch`, {
     method: "POST",
     headers,
@@ -35,6 +37,7 @@ async function importDataset(dataset, sourceName) {
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(`${dataset.kind}: importacao recusada (${result.message || response.status}).`);
   if (result?.ok === false) throw new Error(`${dataset.kind}: ${result.error || "falha de validacao no banco"}.`);
+  console.log(`${dataset.kind}: concluido em ${Date.now() - startedAt} ms.`);
   return { kind: dataset.kind, rows: dataset.rows.length };
 }
 

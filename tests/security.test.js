@@ -125,4 +125,13 @@ describe('contratos de autorização', () => {
     assert.match(migration, /import_kind_value <> 'PRECOS'/);
     assert.match(migration, /import_catalog_batch_legacy/);
   });
+
+  it('prepara snapshot de preços uma vez e evita comparação quadrática', () => {
+    const migration = readFileSync(new URL('../supabase/migrations/0014_stage_price_sync.sql', import.meta.url), 'utf8');
+    assert.match(migration, /create temporary table debaportal_price_import/);
+    assert.match(migration, /create index debaportal_price_import_key_idx/);
+    assert.match(migration, /left join pg_temp\.debaportal_price_import staged/);
+    assert.doesNotMatch(migration, /not exists \([\s\S]*jsonb_array_elements\(rows\)/);
+    assert.match(migration, /set statement_timeout = '60s'/);
+  });
 });
