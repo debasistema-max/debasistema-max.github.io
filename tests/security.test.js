@@ -153,4 +153,12 @@ describe('contratos de autorização', () => {
     assert.match(migration, /group by public\.normalize_search\(year_value\)/);
     assert.match(migration, /revoke all on function public\.search_catalog_raw/);
   });
+
+  it('restaura o nome esperado internamente pela consulta do catálogo', () => {
+    const migration = readFileSync(new URL('../supabase/migrations/0017_restore_search_catalog.sql', import.meta.url), 'utf8');
+    assert.match(migration, /drop function if exists public\.search_catalog/);
+    assert.match(migration, /alter function public\.search_catalog_raw/);
+    assert.match(migration, /rename to search_catalog/);
+    assert.match(migration, /grant execute[\s\S]*to authenticated/);
+  });
 });
