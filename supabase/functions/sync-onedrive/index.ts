@@ -132,9 +132,7 @@ async function secureWorkbookDownload(req: Request, jobId: string, retryFailed: 
   const parsedDownloadUrl = new URL(downloadUrl);
   const downloadHeaders: Record<string, string> = { Range: "bytes=0-" };
   if (parsedDownloadUrl.hostname === "my.microsoftpersonalcontent.com") {
-    const temporaryAuthorization = parsedDownloadUrl.searchParams.get("tempauth");
-    if (!temporaryAuthorization) throw new Error("Autorizacao temporaria do OneDrive ausente.");
-    downloadHeaders.Authorization = `Bearer ${temporaryAuthorization}`;
+    downloadHeaders.Authorization = `Bearer ${token}`;
   }
   const response = await fetchWithRetry(downloadUrl, {
     redirect: "follow",
