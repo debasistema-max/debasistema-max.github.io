@@ -68,6 +68,15 @@ describe('contratos de autorização', () => {
     assert.doesNotMatch(frontend, /PRODUCT_IMAGE_ORIGIN|uploads\/products/);
   });
 
+  it('aceita os formatos atuais de foto e tenta o caminho padrão para todo código numérico', () => {
+    const migration = readFileSync(new URL('../supabase/migrations/0015_product_image_paths.sql', import.meta.url), 'utf8');
+    const edgeFunction = readFileSync(new URL('../supabase/functions/product-image/index.ts', import.meta.url), 'utf8');
+    assert.match(migration, /\(site\/\)\?/);
+    assert.match(edgeFunction, /FALLBACK_CODE_PATTERN/);
+    assert.match(edgeFunction, /\(\?:site\\\/\)\?/);
+    assert.match(edgeFunction, /image\?\.image_path/);
+  });
+
   it('gera listas completas paginadas e permite seleção personalizada', () => {
     const main = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
     const api = readFileSync(new URL('../src/services/api.js', import.meta.url), 'utf8');

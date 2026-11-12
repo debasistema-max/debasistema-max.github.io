@@ -16,6 +16,12 @@ test("aceita somente caminhos de foto da origem autorizada", () => {
   });
   assert.equal(normalizePhotoRecord({ code: "123456", primaryImageUrl: "https://outro.example/foto.webp" }, origin), null);
   assert.equal(normalizePhotoRecord({ code: "123456", primaryImageUrl: "/arquivo.txt" }, origin), null);
+  assert.equal(normalizePhotoRecord({ code: "ABC" }, origin), null);
+  assert.equal(normalizePhotoRecord({ code: "123456" }, origin)?.image_path, "/uploads/products/123456/site/123456.webp");
+  assert.equal(
+    normalizePhotoRecord({ code: "123456", primaryImageUrl: "/uploads/products/123456/123456.png?v=2" }, origin)?.image_path,
+    "/uploads/products/123456/123456.png",
+  );
 });
 
 test("pagina e consolida fotos repetidas do catalogo", async () => {

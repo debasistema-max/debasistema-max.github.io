@@ -1,5 +1,6 @@
 const CODE_PATTERN = /^[A-Za-z0-9._-]{1,100}$/;
-const IMAGE_PATH_PATTERN = /^\/uploads\/products\/[A-Za-z0-9._-]+\/site\/[A-Za-z0-9._-]+\.(?:webp|png|jpe?g)$/i;
+const FALLBACK_CODE_PATTERN = /^\d{6,20}$/;
+const IMAGE_PATH_PATTERN = /^\/uploads\/products\/[A-Za-z0-9._-]+\/(?:site\/)?[A-Za-z0-9._-]+\.(?:webp|png|jpe?g)$/i;
 
 function trustedBase(value, label) {
   const url = new URL(String(value || ""));
@@ -11,8 +12,10 @@ function trustedBase(value, label) {
 
 export function normalizePhotoRecord(item, imageOrigin) {
   const code = String(item?.code || "").trim();
-  const source = String(item?.primaryImageUrl || "").trim();
-  if (!CODE_PATTERN.test(code) || !source) return null;
+  if (!CODE_PATTERN.test(code)) return null;
+  const source = String(item?.primaryImageUrl || "").trim()
+    || (FALLBACK_CODE_PATTERN.test(code) ? `/uploads/products/${code}/site/${code}.webp` : "");
+  if (!source) return null;
 
   const origin = trustedBase(imageOrigin, "Origem das imagens");
   const image = new URL(source, origin);

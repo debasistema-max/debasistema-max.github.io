@@ -3,7 +3,8 @@ import { requireUser } from "../_shared/auth.ts";
 import { corsHeaders, errorMessage, isOriginAllowed, jsonResponse, preflightResponse } from "../_shared/http.ts";
 
 const CODE_PATTERN = /^[A-Za-z0-9._-]{1,100}$/;
-const IMAGE_PATH_PATTERN = /^\/uploads\/products\/[A-Za-z0-9._-]+\/site\/[A-Za-z0-9._-]+\.(?:webp|png|jpe?g)$/i;
+const FALLBACK_CODE_PATTERN = /^\d{6,20}$/;
+const IMAGE_PATH_PATTERN = /^\/uploads\/products\/[A-Za-z0-9._-]+\/(?:site\/)?[A-Za-z0-9._-]+\.(?:webp|png|jpe?g)$/i;
 const ALLOWED_TYPES = new Set(["image/webp", "image/png", "image/jpeg"]);
 const MAX_IMAGE_BYTES = 5_000_000;
 
@@ -37,13 +38,15 @@ Deno.serve(async (req) => {
     const { data: image, error: imageError } = await admin
       .from("product_images").select("image_path").eq("product_id", product.id).maybeSingle();
     if (imageError) throw imageError;
-    if (!image || !IMAGE_PATH_PATTERN.test(image.image_path) || image.image_path.includes("..")) {
+    const imagePath = image?.image_path
+      || (FALLBACK_CODE_PATTERN.test(code) ? `/uploads/products/${code}/site/${code}.webp` : "");
+    if (!IMAGE_PATH_PATTERN.test(imagePath) || imagePath.includes("..")) {
       return jsonResponse(req, { error: "Foto nao encontrada." }, 404);
     }
 
     const origin = new URL(requiredEnv("PRODUCT_IMAGE_ORIGIN"));
     if (origin.protocol !== "https:" || origin.username || origin.password) throw new Error("Origem de fotos invalida.");
-    const target = new URL(image.image_path, origin);
+    const target = new URL(imagePath, origin);
     if (target.origin !== origin.origin) throw new Error("Caminho de foto invalido.");
     const upstream = await fetch(target, {
       headers: { Accept: "image/avif,image/webp,image/png,image/jpeg" },
