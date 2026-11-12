@@ -103,10 +103,9 @@ describe('contratos de autorização', () => {
     assert.match(syncFunction, /items\/\$\{itemId\}/);
     assert.match(syncFunction, /item\["@microsoft\.graph\.downloadUrl"\]/);
     assert.match(syncFunction, /fetchWithRetry\(currentDownloadUrl\.toString\(\)/);
-    assert.match(syncFunction, /Range: "bytes=0-"/);
+    assert.match(syncFunction, /"User-Agent": "ISV\|DebaPortal\|DebaPortal\/1\.0"/);
     assert.match(syncFunction, /hostname === "my\.microsoftpersonalcontent\.com"/);
-    assert.match(syncFunction, /searchParams\.get\("tempauth"\)/);
-    assert.match(syncFunction, /downloadHeaders\.Authorization = `Bearer \$\{temporaryAuthorization\}`/);
+    assert.doesNotMatch(syncFunction, /downloadHeaders\.Authorization/);
     assert.match(syncFunction, /hostname\.endsWith\("\.1drv\.com"\)/);
     assert.match(syncFunction, /redirect: "manual"/);
     assert.match(syncFunction, /failure\?\.error \|\| "unknown_error"/);

@@ -141,11 +141,10 @@ async function secureWorkbookDownload(req: Request, jobId: string, retryFailed: 
   let currentDownloadUrl = parsedDownloadUrl;
   let response: Response | null = null;
   for (let redirectCount = 0; redirectCount < 5; redirectCount += 1) {
-    const downloadHeaders: Record<string, string> = { Range: "bytes=0-" };
-    if (currentDownloadUrl.hostname === "my.microsoftpersonalcontent.com") {
-      const temporaryAuthorization = currentDownloadUrl.searchParams.get("tempauth");
-      if (temporaryAuthorization) downloadHeaders.Authorization = `Bearer ${temporaryAuthorization}`;
-    }
+    const downloadHeaders: Record<string, string> = {
+      Accept: "application/octet-stream",
+      "User-Agent": "ISV|DebaPortal|DebaPortal/1.0",
+    };
     response = await fetchWithRetry(currentDownloadUrl.toString(), {
       redirect: "manual",
       cache: "no-store",
