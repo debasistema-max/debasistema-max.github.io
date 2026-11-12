@@ -105,7 +105,7 @@ describe('contratos de autorização', () => {
     assert.match(syncFunction, /fetchWithRetry\(downloadUrl/);
     assert.match(syncFunction, /Range: "bytes=0-"/);
     assert.match(syncFunction, /hostname === "my\.microsoftpersonalcontent\.com"/);
-    assert.match(syncFunction, /microsoftToken\("offline_access OneDrive\.ReadOnly"\)/);
+    assert.match(syncFunction, /microsoftToken\("offline_access OneDrive\.Read"\)/);
     assert.match(syncFunction, /downloadHeaders\.Authorization = `Bearer \$\{await oneDriveContentToken\(\)\}`/);
     assert.doesNotMatch(syncFunction, /searchParams\.get\("tempauth"\)/);
     assert.match(syncFunction, /hostname\.replace/);

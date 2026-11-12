@@ -62,7 +62,7 @@ async function graphToken(): Promise<string> {
 }
 
 async function oneDriveContentToken(): Promise<string> {
-  return await microsoftToken("offline_access OneDrive.ReadOnly");
+  return await microsoftToken("offline_access OneDrive.Read");
 }
 
 async function graphJson(url: string, token: string): Promise<Record<string, unknown>> {
