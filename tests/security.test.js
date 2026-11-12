@@ -100,7 +100,7 @@ describe('contratos de autorização', () => {
     assert.match(syncFunction, /hasServiceRole\(req\)/);
     assert.match(syncFunction, /from\("sync_jobs"\)\.select\("id", \{ head: true \}\)/);
     assert.match(syncFunction, /Cache-Control": "no-store"/);
-    assert.match(syncFunction, /%40microsoft\.graph\.downloadUrl/);
+    assert.match(syncFunction, /items\/\$\{itemId\}/);
     assert.match(syncFunction, /item\["@microsoft\.graph\.downloadUrl"\]/);
     assert.match(syncFunction, /fetchWithRetry\(downloadUrl/);
     assert.match(syncFunction, /hostname\.replace/);

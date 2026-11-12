@@ -76,13 +76,14 @@ async function resolveWorkbook(token: string): Promise<GraphItem> {
   if (folders.length !== 1) throw new Error("Pasta exclusiva do OneDrive nao encontrada.");
   const folderId = encodeURIComponent(String((folders[0] as GraphItem).id));
   const children = await graphJson(
-    `${GRAPH_ROOT}/items/${folderId}/children?%24select=id,name,size,lastModifiedDateTime,file,%40microsoft.graph.downloadUrl`, token,
+    `${GRAPH_ROOT}/items/${folderId}/children?%24select=id,name,file`, token,
   );
   const matches = (Array.isArray(children.value) ? children.value : []).filter(
     (item: GraphItem) => item.name === workbookName && item.file,
   );
   if (matches.length !== 1) throw new Error("Planilha exclusiva do OneDrive nao encontrada.");
-  return matches[0] as GraphItem;
+  const itemId = encodeURIComponent(String((matches[0] as GraphItem).id));
+  return await graphJson(`${GRAPH_ROOT}/items/${itemId}`, token) as GraphItem;
 }
 
 async function hasServiceRole(req: Request): Promise<boolean> {
