@@ -287,6 +287,24 @@ class SupabaseApi {
     return Number(data || 0);
   }
 
+  async listSyncRuns(limit = 12) {
+    const { data, error } = await this.client.rpc('admin_list_sync_runs', { max_runs: Number(limit || 12) });
+    if (error) throw error;
+    return Array.isArray(data) ? data : [];
+  }
+
+  async listSyncChanges(runKey, page = 1, pageSize = 50) {
+    if (!runKey) return { items: [], total: 0 };
+    const { data, error } = await this.client.rpc('admin_list_sync_changes', {
+      selected_run_key: runKey,
+      page_number: Number(page || 1),
+      page_size: Number(pageSize || 50)
+    });
+    if (error) throw error;
+    const rows = Array.isArray(data) ? data : [];
+    return { items: rows, total: Number(rows[0]?.total_count || 0) };
+  }
+
   async listProfiles() {
     const { data, error } = await this.client
       .from('profiles')
@@ -483,6 +501,22 @@ class DemoApi {
     const selected = new Set(productIds || []);
     demoProducts.forEach((product) => { if (selected.has(product.id)) product.admin_inactive = !active; });
     return selected.size;
+  }
+  async listSyncRuns() {
+    return [{
+      run_key: 'demo-run', source_kind: 'ONEDRIVE', import_kinds: ['PRODUTOS', 'PRECOS', 'ESTOQUE'],
+      started_at: new Date().toISOString(), finished_at: new Date().toISOString(), status: 'CONCLUIDO',
+      rows_received: 15, rows_applied: 15, changed_products: 2, changed_fields: 3
+    }];
+  }
+  async listSyncChanges(runKey) {
+    if (runKey !== 'demo-run') return { items: [], total: 0 };
+    const items = [
+      { change_id: 1, product_code: 'DP-1001', change_scope: 'PRECO', field_name: 'Preço', context_label: 'PR-PR', previous_value: '279.90', new_value: '289.90', changed_at: new Date().toISOString(), total_count: 3 },
+      { change_id: 2, product_code: 'DP-1020', change_scope: 'ESTOQUE', field_name: 'Estoque', context_label: 'PR', previous_value: '8', new_value: '12', changed_at: new Date().toISOString(), total_count: 3 },
+      { change_id: 3, product_code: 'DP-1020', change_scope: 'APLICACAO', field_name: 'Aplicação / Ano', context_label: null, previous_value: 'Utilitário leve | 2018 a 2024', new_value: 'Utilitário leve | 2019 a 2025', changed_at: new Date().toISOString(), total_count: 3 }
+    ];
+    return { items, total: items.length };
   }
   async listProfiles() { return [{ id: 'demo-user', email: 'demo@debaportal.local', full_name: 'Demonstração', role: 'ADMIN', active: true, branch_ids: [], price_table_ids: [], created_at: new Date().toISOString() }]; }
   async listBranches() { return [{ id: 'branch-sp', code: 'SP', name: 'Filial SP', state: 'SP', active: true }, { id: 'branch-pr', code: 'PR', name: 'Filial PR', state: 'PR', active: true }]; }

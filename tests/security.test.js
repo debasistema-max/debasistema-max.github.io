@@ -98,4 +98,22 @@ describe('contratos de autorização', () => {
     const imageFunction = readFileSync(new URL('../supabase/functions/product-image/index.ts', import.meta.url), 'utf8');
     assert.match(imageFunction, /\.eq\("admin_inactive", false\)/);
   });
+
+  it('registra diferenças por sincronização com acesso administrativo e retenção limitada', () => {
+    const migration = readFileSync(new URL('../supabase/migrations/0012_sync_change_history.sql', import.meta.url), 'utf8');
+    const main = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+    const api = readFileSync(new URL('../src/services/api.js', import.meta.url), 'utf8');
+    assert.match(migration, /create table if not exists public\.sync_item_changes/);
+    assert.match(migration, /sync_item_changes_admin_read[\s\S]*public\.is_admin\(\)/);
+    assert.match(migration, /limit 20/);
+    assert.match(migration, /old\.quantity is distinct from new\.quantity/);
+    assert.match(migration, /previous_price is distinct from new\.price/);
+    assert.match(migration, /Aplicação \/ Ano/);
+    assert.match(migration, /admin_list_sync_runs\(max_runs integer default 12\)/);
+    assert.match(migration, /admin_list_sync_changes\(/);
+    assert.match(main, /Alterações por sincronização/);
+    assert.match(main, /data-sync-run/);
+    assert.match(api, /async listSyncRuns\(/);
+    assert.match(api, /async listSyncChanges\(/);
+  });
 });

@@ -40,6 +40,10 @@ export const state = {
     items: [], total: 0, page: 1, pageSize: 50,
     query: '', status: 'ATIVOS', selection: new Set()
   },
+  adminSync: {
+    runs: [], selectedRunKey: '', changes: [], total: 0,
+    page: 1, pageSize: 50
+  },
   busy: false,
   toast: null
 };

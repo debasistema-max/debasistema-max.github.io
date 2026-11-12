@@ -415,7 +415,37 @@ function usersAdminPanel(summary) {
   const table = summary.profiles.length
     ? `<div class="table-wrap"><table><thead><tr><th>Usuário</th><th>Perfil</th><th>Situação</th><th>Acessos</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table></div>`
     : '<p class="muted">Nenhum perfil carregado.</p>';
-  return `<section class="panel admin-card admin-wide"><div class="section-title"><span>7</span><div><h2>Usuários e permissões</h2><p>Convide usuários, aprove contas e limite filiais e tabelas para vendedores.</p></div></div>${inviteForm}${table}</section>`;
+  return `<section class="panel admin-card admin-wide"><div class="section-title"><span>8</span><div><h2>Usuários e permissões</h2><p>Convide usuários, aprove contas e limite filiais e tabelas para vendedores.</p></div></div>${inviteForm}${table}</section>`;
+}
+
+function syncChangeValue(value) {
+  if (value === null || value === undefined || value === '') return '<span class="sync-empty-value">Sem valor</span>';
+  const text = String(value);
+  if (text.length <= 90) return `<span>${escapeHtml(text)}</span>`;
+  return `<details class="sync-long-value"><summary>${escapeHtml(`${text.slice(0, 86)}…`)}</summary><p>${escapeHtml(text)}</p></details>`;
+}
+
+function syncHistoryPanel() {
+  const audit = state.adminSync;
+  const selected = audit.runs.find((run) => run.run_key === audit.selectedRunKey);
+  const totalPages = Math.max(1, Math.ceil(audit.total / audit.pageSize));
+  const scopeLabels = { PRODUTO: 'Produto', APLICACAO: 'Aplicação', PRECO: 'Preço', ESTOQUE: 'Estoque' };
+  const runButtons = audit.runs.length
+    ? audit.runs.map((run) => `<button type="button" class="sync-run-button ${run.run_key === audit.selectedRunKey ? 'active' : ''}" data-sync-run="${escapeHtml(run.run_key)}"><span><strong>${run.source_kind === 'ONEDRIVE' ? 'Sincronização online' : 'Importação manual'}</strong><small>${escapeHtml(formatDateTime(run.finished_at || run.started_at))}</small></span><span><b>${integer(run.changed_products)}</b><small>item(ns)</small></span></button>`).join('')
+    : '<div class="empty-state"><strong>Nenhum histórico disponível</strong><span>As alterações aparecerão após a próxima sincronização.</span></div>';
+  const rows = audit.changes.map((change) => `<tr>
+    <td data-label="Item"><strong>${escapeHtml(change.product_code)}</strong></td>
+    <td data-label="Área"><span class="sync-scope sync-scope-${escapeHtml(change.change_scope.toLowerCase())}">${escapeHtml(scopeLabels[change.change_scope] || change.change_scope)}</span></td>
+    <td data-label="Campo"><strong>${escapeHtml(change.field_name)}</strong>${change.context_label ? `<small>${escapeHtml(change.context_label)}</small>` : ''}</td>
+    <td data-label="Antes">${syncChangeValue(change.previous_value)}</td>
+    <td data-label="Depois">${syncChangeValue(change.new_value)}</td>
+  </tr>`).join('');
+  const changes = !selected
+    ? '<div class="empty-state"><strong>Selecione uma sincronização</strong><span>Escolha uma execução para consultar os itens alterados.</span></div>'
+    : audit.total === 0
+      ? '<div class="empty-state"><strong>Nenhuma alteração registrada</strong><span>O histórico detalhado começa nesta versão; execuções anteriores ou dados idênticos podem aparecer sem alterações.</span></div>'
+      : `<div class="sync-change-heading"><div><strong>${integer(selected.changed_products)} item(ns) alterado(s)</strong><span>${integer(selected.changed_fields)} alteração(ões) registrada(s)</span></div><span>${escapeHtml((selected.import_kinds || []).join(' · '))}</span></div><div class="table-wrap"><table class="sync-change-table"><thead><tr><th>Item</th><th>Área</th><th>Campo</th><th>Antes</th><th>Depois</th></tr></thead><tbody>${rows}</tbody></table></div><div class="pagination"><button class="button button-secondary" data-sync-change-page="${audit.page - 1}" ${audit.page <= 1 ? 'disabled' : ''}>Anterior</button><span>Página ${audit.page} de ${totalPages}</span><button class="button button-secondary" data-sync-change-page="${audit.page + 1}" ${audit.page >= totalPages ? 'disabled' : ''}>Próxima</button></div>`;
+  return `<section class="panel admin-card admin-wide sync-history-panel"><div class="section-title"><span>3</span><div><h2>Alterações por sincronização</h2><p>Consulte cada item modificado e compare os valores anterior e novo.</p></div></div><div class="sync-history-layout"><aside class="sync-run-list">${runButtons}</aside><div class="sync-change-content">${changes}</div></div></section>`;
 }
 
 function productsAdminPanel() {
@@ -434,7 +464,7 @@ function productsAdminPanel() {
   const table = catalog.items.length
     ? `<div class="table-wrap"><table class="admin-products-table"><thead><tr><th></th><th>Código</th><th>Descrição</th><th>Categoria</th><th>Linha</th><th>Situação</th></tr></thead><tbody>${rows}</tbody></table></div>`
     : `<div class="empty-state"><strong>Nenhum produto ${inactive ? 'inativo' : 'ativo'} encontrado</strong><span>Ajuste a pesquisa ou altere a visualização.</span></div>`;
-  return `<section class="panel admin-card admin-wide"><div class="section-title"><span>6</span><div><h2>Ativação de produtos</h2><p>Selecione vários itens para ocultá-los do portal ou reativá-los. A escolha é preservada nas próximas sincronizações.</p></div></div>
+  return `<section class="panel admin-card admin-wide"><div class="section-title"><span>7</span><div><h2>Ativação de produtos</h2><p>Selecione vários itens para ocultá-los do portal ou reativá-los. A escolha é preservada nas próximas sincronizações.</p></div></div>
     <form id="admin-product-search-form" class="admin-product-search"><input name="query" value="${escapeHtml(catalog.query)}" placeholder="Pesquisar por código ou descrição"><select name="status"><option value="ATIVOS" ${inactive ? '' : 'selected'}>Itens ativos</option><option value="INATIVOS" ${inactive ? 'selected' : ''}>Itens inativos</option></select><button class="button button-secondary" type="submit">Pesquisar</button></form>
     <div class="bulk-action-bar"><span><strong>${integer(selectedCount)}</strong> selecionado(s) de ${integer(catalog.total)} · máximo 500</span><div><button class="button button-secondary button-small" type="button" data-action="select-admin-page" ${catalog.items.length ? '' : 'disabled'}>Selecionar esta página</button><button class="button button-ghost button-small" type="button" data-action="clear-admin-selection" ${selectedCount ? '' : 'disabled'}>Limpar</button><button class="button ${inactive ? 'button-primary' : 'button-danger'} button-small" type="button" data-action="toggle-admin-products" ${selectedCount ? '' : 'disabled'}>${inactive ? 'Reativar selecionados' : 'Inativar selecionados'}</button></div></div>
     ${table}
@@ -459,9 +489,10 @@ function renderAdmin() {
     <div class="admin-grid">
       <section class="panel admin-card"><div class="section-title"><span>1</span><div><h2>Importação manual</h2><p>XLSX, XLS ou CSV. O arquivo original não é enviado nem armazenado.</p></div></div><input id="import-file" type="file" accept=".xlsx,.xls,.csv"><div id="import-preview">${pendingImport ? `<div class="import-ready"><strong>${escapeHtml(pendingImport.fileName)}</strong><span>${integer(pendingImport.rows.length)} linhas · tipo ${escapeHtml(pendingImport.kind)}</span><button class="button button-primary" data-action="commit-import">Validar e importar</button></div>` : '<p class="muted">Selecione um arquivo para validar os cabeçalhos.</p>'}</div></section>
       <section class="panel admin-card"><div class="section-title"><span>2</span><div><h2>Catálogo online</h2><p>Planilha e fotos são sincronizadas somente quando um administrador solicitar.</p></div></div><p>Última atualização: <strong>${escapeHtml(formatDateTime(state.lastSync?.finished_at || state.lastSync?.started_at))}</strong></p>${syncStatus}<button class="button button-primary" data-action="sync-drive" ${syncActive ? 'disabled' : ''}>${syncActive ? 'Sincronizando…' : 'Sincronizar agora'}</button></section>
-      <section class="panel admin-card"><div class="section-title"><span>3</span><div><h2>Armazenamento</h2><p>Monitoramento das tabelas estruturadas do DebaPortal.</p></div></div>${storageAlert}${summary.storage.length ? `<ul class="metric-list">${summary.storage.map((row) => `<li><span>${escapeHtml(row.relation || row.table_name)}</span><strong>${escapeHtml(row.pretty_size || `${row.bytes || 0} bytes`)}</strong></li>`).join('')}</ul>` : '<p class="muted">Resumo indisponível.</p>'}</section>
-      <section class="panel admin-card"><div class="section-title"><span>4</span><div><h2>Filiais</h2><p>Cadastre origens antes das tabelas comerciais.</p></div></div><form id="branch-form" class="compact-form"><input name="code" maxlength="20" placeholder="Código (ex.: SP)" required><input name="name" maxlength="120" placeholder="Nome da filial" required><select name="state" required><option value="">UF</option>${stateOptions('')}</select><button class="button button-primary" type="submit">Adicionar filial</button></form><ul class="inline-list">${summary.branches.map((branch) => `<li><strong>${escapeHtml(branch.code)}</strong><span>${escapeHtml(branch.name)} · ${escapeHtml(branch.state)}</span></li>`).join('')}</ul></section>
-      <section class="panel admin-card"><div class="section-title"><span>5</span><div><h2>Tabelas comerciais</h2><p>Destino e origem definem onde cada tabela pode ser usada.</p></div></div><form id="price-table-form" class="compact-form"><input name="code" maxlength="60" placeholder="Código" required><input name="name" maxlength="160" placeholder="Nome" required><input name="version" type="number" min="1" value="1" required><select name="destinationState"><option value="">Todos os destinos</option>${stateOptions('')}</select><select name="originBranchId"><option value="">Todas as origens</option>${summary.branches.map((branch) => `<option value="${branch.id}">${escapeHtml(branch.code)} · ${escapeHtml(branch.name)}</option>`).join('')}</select><input name="validFrom" type="date" value="${new Date().toISOString().slice(0, 10)}" required><button class="button button-primary" type="submit">Criar tabela</button></form><ul class="inline-list">${state.priceTables.map((table) => `<li><strong>${escapeHtml(table.code)} · v${table.version}</strong><span>${escapeHtml(table.name)} · ${escapeHtml(table.destination_state || 'Todos')}</span></li>`).join('')}</ul></section>
+      ${syncHistoryPanel()}
+      <section class="panel admin-card"><div class="section-title"><span>4</span><div><h2>Armazenamento</h2><p>Monitoramento das tabelas estruturadas do DebaPortal.</p></div></div>${storageAlert}${summary.storage.length ? `<ul class="metric-list">${summary.storage.map((row) => `<li><span>${escapeHtml(row.relation || row.table_name)}</span><strong>${escapeHtml(row.pretty_size || `${row.bytes || 0} bytes`)}</strong></li>`).join('')}</ul>` : '<p class="muted">Resumo indisponível.</p>'}</section>
+      <section class="panel admin-card"><div class="section-title"><span>5</span><div><h2>Filiais</h2><p>Cadastre origens antes das tabelas comerciais.</p></div></div><form id="branch-form" class="compact-form"><input name="code" maxlength="20" placeholder="Código (ex.: SP)" required><input name="name" maxlength="120" placeholder="Nome da filial" required><select name="state" required><option value="">UF</option>${stateOptions('')}</select><button class="button button-primary" type="submit">Adicionar filial</button></form><ul class="inline-list">${summary.branches.map((branch) => `<li><strong>${escapeHtml(branch.code)}</strong><span>${escapeHtml(branch.name)} · ${escapeHtml(branch.state)}</span></li>`).join('')}</ul></section>
+      <section class="panel admin-card"><div class="section-title"><span>6</span><div><h2>Tabelas comerciais</h2><p>Destino e origem definem onde cada tabela pode ser usada.</p></div></div><form id="price-table-form" class="compact-form"><input name="code" maxlength="60" placeholder="Código" required><input name="name" maxlength="160" placeholder="Nome" required><input name="version" type="number" min="1" value="1" required><select name="destinationState"><option value="">Todos os destinos</option>${stateOptions('')}</select><select name="originBranchId"><option value="">Todas as origens</option>${summary.branches.map((branch) => `<option value="${branch.id}">${escapeHtml(branch.code)} · ${escapeHtml(branch.name)}</option>`).join('')}</select><input name="validFrom" type="date" value="${new Date().toISOString().slice(0, 10)}" required><button class="button button-primary" type="submit">Criar tabela</button></form><ul class="inline-list">${state.priceTables.map((table) => `<li><strong>${escapeHtml(table.code)} · v${table.version}</strong><span>${escapeHtml(table.name)} · ${escapeHtml(table.destination_state || 'Todos')}</span></li>`).join('')}</ul></section>
       ${productsAdminPanel()}
       ${usersAdminPanel(summary)}
     </div>`;
@@ -558,15 +589,49 @@ async function loadAdmin() {
   if (state.profile?.role !== 'ADMIN') return;
   state.busy = true; updateView();
   try {
-    const [profiles, storage, branches, syncJob, catalog] = await Promise.all([
+    const [profiles, storage, branches, syncJob, catalog, syncRuns] = await Promise.all([
       api.listProfiles(), api.storageSummary(), api.listBranches(), api.getSyncJob(),
-      api.listAdminProducts(state.adminCatalog)
+      api.listAdminProducts(state.adminCatalog), api.listSyncRuns(12)
     ]);
     state.adminCatalog.items = catalog.items;
     state.adminCatalog.total = catalog.total;
+    state.adminSync.runs = syncRuns;
+    if (!syncRuns.some((run) => run.run_key === state.adminSync.selectedRunKey)) {
+      state.adminSync.selectedRunKey = syncRuns[0]?.run_key || '';
+      state.adminSync.page = 1;
+    }
+    const syncChanges = await api.listSyncChanges(state.adminSync.selectedRunKey, state.adminSync.page, state.adminSync.pageSize);
+    state.adminSync.changes = syncChanges.items;
+    state.adminSync.total = syncChanges.total;
     state.adminSummary = { profiles, branches, syncJob, storage: Array.isArray(storage) ? storage : [storage].filter(Boolean) };
   } catch (error) { setToast(error.message || 'Falha ao carregar administração.', 'error'); }
   finally { state.busy = false; updateView(); }
+}
+
+async function loadSyncChanges(shouldRender = true) {
+  try {
+    const result = await api.listSyncChanges(state.adminSync.selectedRunKey, state.adminSync.page, state.adminSync.pageSize);
+    state.adminSync.changes = result.items;
+    state.adminSync.total = result.total;
+  } catch (error) {
+    setToast(error.message || 'Falha ao carregar alterações da sincronização.', 'error');
+  }
+  if (shouldRender) updateView();
+}
+
+async function loadSyncHistory(shouldRender = true) {
+  try {
+    const runs = await api.listSyncRuns(12);
+    state.adminSync.runs = runs;
+    if (!runs.some((run) => run.run_key === state.adminSync.selectedRunKey)) {
+      state.adminSync.selectedRunKey = runs[0]?.run_key || '';
+      state.adminSync.page = 1;
+    }
+    await loadSyncChanges(false);
+  } catch (error) {
+    setToast(error.message || 'Falha ao carregar histórico de sincronizações.', 'error');
+  }
+  if (shouldRender) updateView();
 }
 
 async function loadAdminProducts(shouldRender = true) {
@@ -747,6 +812,17 @@ root.addEventListener('click', async (event) => {
   if (adminProductPage && !adminProductPage.disabled) {
     state.adminCatalog.page = Number(adminProductPage.dataset.adminProductPage);
     await loadAdminProducts(); return;
+  }
+  const syncRunButton = event.target.closest('[data-sync-run]');
+  if (syncRunButton) {
+    state.adminSync.selectedRunKey = syncRunButton.dataset.syncRun;
+    state.adminSync.page = 1;
+    await loadSyncChanges(); return;
+  }
+  const syncChangePage = event.target.closest('[data-sync-change-page]');
+  if (syncChangePage && !syncChangePage.disabled) {
+    state.adminSync.page = Number(syncChangePage.dataset.syncChangePage);
+    await loadSyncChanges(); return;
   }
   const addButton = event.target.closest('[data-add-product]');
   if (addButton) {
@@ -1009,6 +1085,7 @@ async function handleImport() {
     state.catalogOptions = catalogOptions;
     state.listSelection.clear();
     await refreshProducts(false);
+    if (state.route === 'admin') await loadSyncHistory(false);
   }
   catch (error) { setToast(error.message || 'Falha na importação.', 'error'); }
   finally { state.busy = false; updateView(); }
@@ -1027,6 +1104,7 @@ async function pollDriveSync(jobId) {
       state.catalogOptions = catalogOptions;
       state.listSelection.clear();
       await refreshProducts(false);
+      if (state.route === 'admin') await loadSyncHistory(false);
       setToast('Sincronização concluída.', 'success');
       updateView();
       return;
