@@ -423,7 +423,7 @@ function usersAdminPanel(summary) {
   const table = summary.profiles.length
     ? `<div class="table-wrap"><table><thead><tr><th>Usuário</th><th>Perfil</th><th>Situação</th><th>Acessos</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table></div>`
     : '<p class="muted">Nenhum perfil carregado.</p>';
-  return `<section class="panel admin-card admin-wide"><div class="section-title"><span>8</span><div><h2>Usuários e permissões</h2><p>Convide usuários, aprove contas e limite filiais e tabelas para vendedores.</p></div></div>${inviteForm}${table}</section>`;
+  return `<section class="panel admin-card admin-wide"><div class="section-title"><span>9</span><div><h2>Usuários e permissões</h2><p>Convide usuários, aprove contas e limite filiais e tabelas para vendedores.</p></div></div>${inviteForm}${table}</section>`;
 }
 
 function syncChangeValue(value) {
@@ -472,7 +472,7 @@ function productsAdminPanel() {
   const table = catalog.items.length
     ? `<div class="table-wrap"><table class="admin-products-table"><thead><tr><th></th><th>Código</th><th>Descrição</th><th>Categoria</th><th>Linha</th><th>Situação</th></tr></thead><tbody>${rows}</tbody></table></div>`
     : `<div class="empty-state"><strong>Nenhum produto ${inactive ? 'inativo' : 'ativo'} encontrado</strong><span>Ajuste a pesquisa ou altere a visualização.</span></div>`;
-  return `<section class="panel admin-card admin-wide"><div class="section-title"><span>7</span><div><h2>Ativação de produtos</h2><p>Selecione vários itens para ocultá-los do portal ou reativá-los. A escolha é preservada nas próximas sincronizações.</p></div></div>
+  return `<section class="panel admin-card admin-wide"><div class="section-title"><span>8</span><div><h2>Ativação de produtos</h2><p>Selecione vários itens para ocultá-los do portal ou reativá-los. A escolha é preservada nas próximas sincronizações.</p></div></div>
     <form id="admin-product-search-form" class="admin-product-search"><input name="query" value="${escapeHtml(catalog.query)}" placeholder="Pesquisar por código ou descrição"><select name="status"><option value="ATIVOS" ${inactive ? '' : 'selected'}>Itens ativos</option><option value="INATIVOS" ${inactive ? 'selected' : ''}>Itens inativos</option></select><button class="button button-secondary" type="submit">Pesquisar</button></form>
     <div class="bulk-action-bar"><span><strong>${integer(selectedCount)}</strong> selecionado(s) de ${integer(catalog.total)} · máximo 500</span><div><button class="button button-secondary button-small" type="button" data-action="select-admin-page" ${catalog.items.length ? '' : 'disabled'}>Selecionar esta página</button><button class="button button-ghost button-small" type="button" data-action="clear-admin-selection" ${selectedCount ? '' : 'disabled'}>Limpar</button><button class="button ${inactive ? 'button-primary' : 'button-danger'} button-small" type="button" data-action="toggle-admin-products" ${selectedCount ? '' : 'disabled'}>${inactive ? 'Reativar selecionados' : 'Inativar selecionados'}</button></div></div>
     ${table}
@@ -490,6 +490,7 @@ function renderAdmin() {
   const syncJob = summary.syncJob;
   const syncLabels = { SOLICITADO: 'Solicitada', EM_EXECUCAO: 'Em execução', CONCLUIDO: 'Concluída', FALHOU: 'Falhou' };
   const syncActive = ['SOLICITADO', 'EM_EXECUCAO'].includes(syncJob?.status);
+  const selectedTable = state.priceTables.find((table) => table.id === state.priceTableId);
   const syncStatus = syncJob
     ? `<div class="notice ${syncJob.status === 'FALHOU' ? 'notice-error' : ''}"><strong>${escapeHtml(syncLabels[syncJob.status] || syncJob.status)}</strong>${syncJob.summary?.produtos !== undefined ? `<span>${integer(syncJob.summary.produtos)} produto(s)</span>` : ''}${syncJob.summary?.precos !== undefined ? `<span>${integer(syncJob.summary.precos)} preço(s)</span>` : ''}${syncJob.summary?.estoque !== undefined ? `<span>${integer(syncJob.summary.estoque)} registro(s) de estoque</span>` : ''}${syncJob.summary?.fotos !== undefined && syncJob.summary?.fotos !== null ? `<span>${integer(syncJob.summary.fotos)} foto(s) catalogada(s), com busca alternativa para os demais itens</span>` : ''}${syncJob.summary?.aviso_fotos ? `<span>${escapeHtml(syncJob.summary.aviso_fotos)}</span>` : ''}${syncJob.error_message ? `<span>${escapeHtml(syncJob.error_message)}</span>` : ''}</div>`
     : '<p class="muted">Nenhuma solicitação online registrada.</p>';
@@ -498,9 +499,10 @@ function renderAdmin() {
       <section class="panel admin-card"><div class="section-title"><span>1</span><div><h2>Importação manual</h2><p>XLSX, XLS ou CSV. O arquivo original não é enviado nem armazenado.</p></div></div><input id="import-file" type="file" accept=".xlsx,.xls,.csv"><div id="import-preview">${pendingImport ? `<div class="import-ready"><strong>${escapeHtml(pendingImport.fileName)}</strong><span>${integer(pendingImport.rows.length)} linhas · tipo ${escapeHtml(pendingImport.kind)}</span><button class="button button-primary" data-action="commit-import">Validar e importar</button></div>` : '<p class="muted">Selecione um arquivo para validar os cabeçalhos.</p>'}</div></section>
       <section class="panel admin-card"><div class="section-title"><span>2</span><div><h2>Catálogo online</h2><p>Planilha e fotos são sincronizadas somente quando um administrador solicitar.</p></div></div><p>Última atualização: <strong>${escapeHtml(formatDateTime(state.lastSync?.finished_at || state.lastSync?.started_at))}</strong></p>${syncStatus}<div class="admin-sync-actions"><button class="button button-primary" data-action="sync-drive" ${syncActive ? 'disabled' : ''}>${syncActive ? 'Sincronizando…' : 'Sincronizar tudo'}</button><button class="button button-secondary" data-action="sync-photos" ${syncActive ? 'disabled' : ''}>Atualizar fotos pelo site</button></div></section>
       ${syncHistoryPanel()}
-      <section class="panel admin-card"><div class="section-title"><span>4</span><div><h2>Armazenamento</h2><p>Monitoramento das tabelas estruturadas do DebaPortal.</p></div></div>${storageAlert}${summary.storage.length ? `<ul class="metric-list">${summary.storage.map((row) => `<li><span>${escapeHtml(row.relation || row.table_name)}</span><strong>${escapeHtml(row.pretty_size || `${row.bytes || 0} bytes`)}</strong></li>`).join('')}</ul>` : '<p class="muted">Resumo indisponível.</p>'}</section>
-      <section class="panel admin-card"><div class="section-title"><span>5</span><div><h2>Filiais</h2><p>Cadastre origens antes das tabelas comerciais.</p></div></div><form id="branch-form" class="compact-form"><input name="code" maxlength="20" placeholder="Código (ex.: SP)" required><input name="name" maxlength="120" placeholder="Nome da filial" required><select name="state" required><option value="">UF</option>${stateOptions('')}</select><button class="button button-primary" type="submit">Adicionar filial</button></form><ul class="inline-list">${summary.branches.map((branch) => `<li><strong>${escapeHtml(branch.code)}</strong><span>${escapeHtml(branch.name)} · ${escapeHtml(branch.state)}</span></li>`).join('')}</ul></section>
-      <section class="panel admin-card"><div class="section-title"><span>6</span><div><h2>Tabelas comerciais</h2><p>Destino e origem definem onde cada tabela pode ser usada.</p></div></div><form id="price-table-form" class="compact-form"><input name="code" maxlength="60" placeholder="Código" required><input name="name" maxlength="160" placeholder="Nome" required><input name="version" type="number" min="1" value="1" required><select name="destinationState"><option value="">Todos os destinos</option>${stateOptions('')}</select><select name="originBranchId"><option value="">Todas as origens</option>${summary.branches.map((branch) => `<option value="${branch.id}">${escapeHtml(branch.code)} · ${escapeHtml(branch.name)}</option>`).join('')}</select><input name="validFrom" type="date" value="${new Date().toISOString().slice(0, 10)}" required><button class="button button-primary" type="submit">Criar tabela</button></form><ul class="inline-list">${state.priceTables.map((table) => `<li><strong>${escapeHtml(table.code)} · v${table.version}</strong><span>${escapeHtml(table.name)} · ${escapeHtml(table.destination_state || 'Todos')}</span></li>`).join('')}</ul></section>
+      <section class="panel admin-card sap-validation-card"><div class="section-title"><span>4</span><div><h2>Conferência manual SAP</h2><p>Sorteia 5 produtos de cada linha e prepara a comparação de preços e estoques.</p></div></div><div class="sap-validation-context"><span>Destino <strong>${escapeHtml(state.destinationState || '—')}</strong></span><span>Origem <strong>${escapeHtml(state.originCode || '—')}</strong></span><span>Tabela <strong>${escapeHtml(selectedTable?.code || 'Não selecionada')}</strong></span></div><p class="muted">Na planilha, preencha somente as colunas amarelas com os valores consultados no SAP.</p><button class="button button-primary" data-action="export-sap-validation" ${state.busy || !state.priceTableId ? 'disabled' : ''}>${state.busy ? 'Preparando…' : 'Gerar amostra de conferência'}</button></section>
+      <section class="panel admin-card"><div class="section-title"><span>5</span><div><h2>Armazenamento</h2><p>Monitoramento das tabelas estruturadas do DebaPortal.</p></div></div>${storageAlert}${summary.storage.length ? `<ul class="metric-list">${summary.storage.map((row) => `<li><span>${escapeHtml(row.relation || row.table_name)}</span><strong>${escapeHtml(row.pretty_size || `${row.bytes || 0} bytes`)}</strong></li>`).join('')}</ul>` : '<p class="muted">Resumo indisponível.</p>'}</section>
+      <section class="panel admin-card"><div class="section-title"><span>6</span><div><h2>Filiais</h2><p>Cadastre origens antes das tabelas comerciais.</p></div></div><form id="branch-form" class="compact-form"><input name="code" maxlength="20" placeholder="Código (ex.: SP)" required><input name="name" maxlength="120" placeholder="Nome da filial" required><select name="state" required><option value="">UF</option>${stateOptions('')}</select><button class="button button-primary" type="submit">Adicionar filial</button></form><ul class="inline-list">${summary.branches.map((branch) => `<li><strong>${escapeHtml(branch.code)}</strong><span>${escapeHtml(branch.name)} · ${escapeHtml(branch.state)}</span></li>`).join('')}</ul></section>
+      <section class="panel admin-card"><div class="section-title"><span>7</span><div><h2>Tabelas comerciais</h2><p>Destino e origem definem onde cada tabela pode ser usada.</p></div></div><form id="price-table-form" class="compact-form"><input name="code" maxlength="60" placeholder="Código" required><input name="name" maxlength="160" placeholder="Nome" required><input name="version" type="number" min="1" value="1" required><select name="destinationState"><option value="">Todos os destinos</option>${stateOptions('')}</select><select name="originBranchId"><option value="">Todas as origens</option>${summary.branches.map((branch) => `<option value="${branch.id}">${escapeHtml(branch.code)} · ${escapeHtml(branch.name)}</option>`).join('')}</select><input name="validFrom" type="date" value="${new Date().toISOString().slice(0, 10)}" required><button class="button button-primary" type="submit">Criar tabela</button></form><ul class="inline-list">${state.priceTables.map((table) => `<li><strong>${escapeHtml(table.code)} · v${table.version}</strong><span>${escapeHtml(table.name)} · ${escapeHtml(table.destination_state || 'Todos')}</span></li>`).join('')}</ul></section>
       ${productsAdminPanel()}
       ${usersAdminPanel(summary)}
     </div>`;
@@ -895,6 +897,7 @@ root.addEventListener('click', async (event) => {
   if (action === 'commit-import') { await handleImport(); return; }
   if (action === 'sync-drive') { await handleDriveSync(); return; }
   if (action === 'sync-photos') { await handlePhotoSync(); return; }
+  if (action === 'export-sap-validation') { await handleSapValidationExport(); return; }
   const profileButton = event.target.closest('[data-profile-id]');
   if (profileButton) {
     try {
@@ -1050,6 +1053,46 @@ async function handleListExport(format) {
     setToast(`${integer(items.length)} produto(s) exportado(s).`, 'success');
   } catch (error) {
     setToast(error.message || 'Não foi possível gerar a lista.', 'error');
+  } finally {
+    state.busy = false; updateView();
+  }
+}
+
+async function handleSapValidationExport() {
+  if (!state.priceTableId) {
+    setToast('Selecione uma tabela comercial antes de gerar a conferência.', 'error'); updateView(); return;
+  }
+  state.busy = true; updateView();
+  try {
+    const items = await api.searchAllProducts({
+      query: '',
+      destinationState: state.destinationState,
+      originCode: state.originCode,
+      priceTableId: state.priceTableId,
+      category: '',
+      line: '',
+      inStockOnly: false
+    });
+    const { sampleProductsByLine } = await import('./lib/sap-validation.js');
+    const sample = sampleProductsByLine(items, 5);
+    if (!sample.length) throw new Error('Nenhum produto ativo foi encontrado para a amostragem.');
+    const selectedTable = state.priceTables.find((table) => table.id === state.priceTableId);
+    const { exportSapValidationExcel } = await import('./lib/exporters.js');
+    exportSapValidationExcel({
+      items: sample,
+      context: {
+        destinationState: state.destinationState,
+        originCode: state.originCode,
+        tableCode: selectedTable?.code || '',
+        tableName: selectedTable?.name || '',
+        updatedAt: formatDateTime(state.lastSync?.finished_at || state.lastSync?.started_at),
+        generatedAt: new Date().toLocaleString('pt-BR'),
+        sampleSize: 5
+      }
+    });
+    setToast(`${integer(sample.length)} item(ns) sorteado(s) para conferência manual.`, 'success');
+  } catch (error) {
+    setToast(error.message || 'Não foi possível gerar a conferência.', 'error');
   } finally {
     state.busy = false; updateView();
   }

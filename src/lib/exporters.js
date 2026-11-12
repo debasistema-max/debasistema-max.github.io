@@ -109,6 +109,86 @@ export function exportExcel(payload) {
   XLSX.writeFile(buildExcelWorkbook(payload), `${safeFileName(payload.title)}.xlsx`, { compression: true, cellStyles: true });
 }
 
+export function buildSapValidationWorkbook({ items, context = {} }) {
+  const headers = [
+    'Linha', 'Código', 'Descrição', 'Tabela', 'Preço portal', 'Preço SAP', 'Diferença preço',
+    'Estoque PR portal', 'Estoque PR SAP', 'Diferença PR', 'Estoque SP portal', 'Estoque SP SAP',
+    'Diferença SP', 'Status', 'Observações'
+  ];
+  const tableLabel = [context.tableCode, context.tableName].filter(Boolean).join(' · ') || '—';
+  const values = [
+    ['DebaPortal · Conferência manual SAP'],
+    [`Amostra aleatória de ${context.sampleSize || 5} itens por linha`],
+    ['Destino', context.destinationState || '—', 'Origem', context.originCode || '—', 'Tabela', tableLabel],
+    ['Gerada em', context.generatedAt || new Date().toLocaleString('pt-BR'), 'Dados atualizados em', context.updatedAt || '—'],
+    [],
+    headers,
+    ...items.map((item) => [
+      item.validation_line || itemValue(item, 'product_line', 'Sem linha'),
+      itemValue(item, 'code'),
+      itemValue(item, 'description'),
+      tableLabel,
+      itemValue(item, 'price', null),
+      '', '',
+      itemValue(item, 'stock_pr', null),
+      '', '',
+      itemValue(item, 'stock_sp', null),
+      '', '', '', ''
+    ])
+  ];
+  const worksheet = XLSX.utils.aoa_to_sheet(values);
+  const lastRow = Math.max(6, items.length + 6);
+  const titleStyle = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 18 }, fill: { fgColor: { rgb: '0B1F3A' } }, alignment: { vertical: 'center' } };
+  const headerStyle = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '0B1F3A' } }, alignment: { vertical: 'center', wrapText: true } };
+  const inputStyle = { fill: { fgColor: { rgb: 'FFF2CC' } }, alignment: { vertical: 'center' } };
+  const formulaStyle = { fill: { fgColor: { rgb: 'DDEBF7' } }, alignment: { vertical: 'center' } };
+  worksheet.A1.s = titleStyle;
+  for (let column = 0; column < headers.length; column += 1) {
+    const address = XLSX.utils.encode_cell({ r: 5, c: column });
+    worksheet[address].s = headerStyle;
+  }
+  for (let row = 7; row <= lastRow; row += 1) {
+    worksheet[`G${row}`] = { t: 'n', f: `IF(F${row}="","",ROUND(F${row}-E${row},2))`, s: formulaStyle, z: 'R$ #,##0.00' };
+    worksheet[`J${row}`] = { t: 'n', f: `IF(I${row}="","",I${row}-H${row})`, s: formulaStyle, z: '0' };
+    worksheet[`M${row}`] = { t: 'n', f: `IF(L${row}="","",L${row}-K${row})`, s: formulaStyle, z: '0' };
+    worksheet[`N${row}`] = {
+      t: 's',
+      f: `IF(OR(E${row}="",H${row}="",K${row}=""),"PORTAL SEM DADOS",IF(COUNTA(F${row},I${row},L${row})=0,"PENDENTE",IF(COUNTA(F${row},I${row},L${row})<3,"INCOMPLETO",IF(AND(ABS(G${row})<=0.01,J${row}=0,M${row}=0),"OK","DIVERGENTE"))))`,
+      s: formulaStyle
+    };
+    for (const column of ['F', 'I', 'L', 'O']) {
+      const address = `${column}${row}`;
+      worksheet[address] = worksheet[address] || { t: 's', v: '' };
+      worksheet[address].s = inputStyle;
+    }
+    for (const column of ['E', 'F']) if (worksheet[`${column}${row}`]) worksheet[`${column}${row}`].z = 'R$ #,##0.00';
+    for (const column of ['H', 'I', 'K', 'L']) if (worksheet[`${column}${row}`]) worksheet[`${column}${row}`].z = '0';
+  }
+  worksheet['!ref'] = `A1:O${lastRow}`;
+  worksheet['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 14 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 14 } }
+  ];
+  worksheet['!rows'] = [{ hpt: 28 }, { hpt: 20 }, { hpt: 20 }, { hpt: 20 }, { hpt: 8 }, { hpt: 32 }];
+  worksheet['!cols'] = [
+    { wch: 17 }, { wch: 17 }, { wch: 42 }, { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 17 },
+    { wch: 17 }, { wch: 15 }, { wch: 14 }, { wch: 17 }, { wch: 15 }, { wch: 14 }, { wch: 19 }, { wch: 34 }
+  ];
+  worksheet['!autofilter'] = { ref: `A6:O${lastRow}` };
+  worksheet['!freeze'] = { xSplit: 0, ySplit: 6, topLeftCell: 'A7', activePane: 'bottomLeft', state: 'frozen' };
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Conferência SAP');
+  workbook.Props = { Title: 'DebaPortal - Conferência manual SAP', Subject: 'Validação manual de preços e estoques', Company: 'DebaPortal' };
+  workbook.Workbook = { CalcPr: { calcMode: 'auto', fullCalcOnLoad: true, forceFullCalc: true } };
+  return workbook;
+}
+
+export function exportSapValidationExcel(payload) {
+  const date = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(buildSapValidationWorkbook(payload), `conferencia-manual-sap-${date}.xlsx`, { compression: true, cellStyles: true });
+}
+
 function drawCommercialHeader(doc, title, context, itemCount) {
   doc.setFillColor(11, 31, 58);
   doc.rect(0, 0, 297, 34, 'F');

@@ -263,6 +263,10 @@ tbody tr:last-child td { border-bottom: 0; }
 .admin-card { padding: 20px; }
 .admin-wide { grid-column: 1 / -1; }
 .admin-card > p { color: var(--slate-700); font-size: .84rem; }
+.sap-validation-card { align-content: start; }
+.sap-validation-context { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 12px; }
+.sap-validation-context span { display: inline-flex; gap: 5px; align-items: center; padding: 7px 10px; border-radius: 999px; background: var(--slate-100); color: var(--slate-700); font-size: .76rem; }
+.sap-validation-context strong { color: var(--navy-900); }
 .import-ready { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; margin-top: 14px; border-radius: 10px; background: var(--slate-100); padding: 12px; }
 .import-ready strong { color: var(--navy-900); font-size: .82rem; }
 .import-ready span { color: var(--slate-500); font-size: .72rem; }
