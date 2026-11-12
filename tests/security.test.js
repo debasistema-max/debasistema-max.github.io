@@ -101,6 +101,8 @@ describe('contratos de autorização', () => {
     assert.match(syncFunction, /from\("sync_jobs"\)\.select\("id", \{ head: true \}\)/);
     assert.match(syncFunction, /Cache-Control": "no-store"/);
     assert.match(syncFunction, /redirect: "follow"/);
+    assert.match(syncFunction, /RETRYABLE_STATUS = new Set\(\[429, 500, 502, 503, 504\]\)/);
+    assert.match(syncFunction, /fetchWithRetry/);
     assert.match(syncScript, /functions\/v1\/sync-onedrive/);
     assert.match(syncScript, /action: "download"/);
     assert.doesNotMatch(syncScript, /job\.source_download_url/);

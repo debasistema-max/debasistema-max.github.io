@@ -13,11 +13,25 @@ type GraphItem = {
 type SyncRequest = { action?: "dispatch" | "dispatch_photos" | "check" | "download"; job_id?: string };
 
 const GRAPH_ROOT = "https://graph.microsoft.com/v1.0/me/drive";
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 
 function requiredEnv(name: string): string {
   const value = Deno.env.get(name)?.trim();
   if (!value) throw new Error(`Configuracao ausente: ${name}.`);
   return value;
+}
+
+async function fetchWithRetry(url: string, init: RequestInit, attempts = 4): Promise<Response> {
+  let response: Response | null = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    response = await fetch(url, init);
+    if (!RETRYABLE_STATUS.has(response.status) || attempt === attempts - 1) return response;
+    await response.body?.cancel().catch(() => {});
+    const retryAfter = Number(response.headers.get("retry-after") || 0) * 1000;
+    const delay = retryAfter > 0 ? Math.min(retryAfter, 8_000) : 500 * (2 ** attempt);
+    await new Promise((resolve) => setTimeout(resolve, delay));
+  }
+  return response as Response;
 }
 
 async function graphToken(): Promise<string> {
@@ -27,7 +41,7 @@ async function graphToken(): Promise<string> {
     scope: Deno.env.get("MS_GRAPH_SCOPE") || "offline_access Files.Read",
     grant_type: "refresh_token",
   });
-  const response = await fetch("https://login.microsoftonline.com/consumers/oauth2/v2.0/token", {
+  const response = await fetchWithRetry("https://login.microsoftonline.com/consumers/oauth2/v2.0/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
@@ -39,7 +53,7 @@ async function graphToken(): Promise<string> {
 }
 
 async function graphJson(url: string, token: string): Promise<Record<string, unknown>> {
-  const response = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } });
+  const response = await fetchWithRetry(url, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } });
   if (!response.ok) throw new Error(`Microsoft Graph respondeu ${response.status}.`);
   return await response.json();
 }
@@ -102,7 +116,7 @@ async function secureWorkbookDownload(req: Request, jobId: string): Promise<Resp
     throw new Error("A planilha foi alterada depois da solicitacao. Solicite uma nova sincronizacao.");
   }
 
-  const response = await fetch(`${GRAPH_ROOT}/items/${encodeURIComponent(item.id)}/content`, {
+  const response = await fetchWithRetry(`${GRAPH_ROOT}/items/${encodeURIComponent(item.id)}/content`, {
     headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
     redirect: "follow",
   });
