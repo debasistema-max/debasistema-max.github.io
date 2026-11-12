@@ -66,7 +66,15 @@ async function graphToken(): Promise<string> {
 }
 
 async function graphJson(url: string, token: string): Promise<Record<string, unknown>> {
-  const response = await fetchWithRetry(url, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } });
+  const response = await fetchWithRetry(url, {
+    cache: "no-store",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+      "Cache-Control": "no-cache, no-store",
+      Pragma: "no-cache",
+    },
+  });
   if (!response.ok) throw new Error(`Microsoft Graph respondeu ${response.status}.`);
   return await response.json();
 }
