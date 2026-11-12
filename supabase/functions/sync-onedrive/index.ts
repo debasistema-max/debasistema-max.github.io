@@ -66,14 +66,21 @@ async function resolveWorkbook(token: string): Promise<GraphItem> {
   return matches[0] as GraphItem;
 }
 
-function hasServiceRole(req: Request): boolean {
+async function hasServiceRole(req: Request): Promise<boolean> {
   const match = (req.headers.get("authorization") || "").match(/^Bearer\s+(.+)$/i);
   const token = match?.[1] || "";
-  return token !== "" && token === requiredEnv("SUPABASE_SERVICE_ROLE_KEY");
+  if (!token) return false;
+  if (token === requiredEnv("SUPABASE_SERVICE_ROLE_KEY")) return true;
+  const verifier = createClient(requiredEnv("SUPABASE_URL"), token, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { error } = await verifier.from("sync_jobs").select("id", { head: true }).limit(1);
+  return !error;
 }
 
 async function secureWorkbookDownload(req: Request, jobId: string): Promise<Response> {
-  if (!hasServiceRole(req)) return jsonResponse(req, { error: "Acesso de backend obrigatorio." }, 403);
+  if (!(await hasServiceRole(req))) return jsonResponse(req, { error: "Acesso de backend obrigatorio." }, 403);
   if (!/^[0-9a-f-]{36}$/i.test(jobId)) return jsonResponse(req, { error: "Solicitacao invalida." }, 400);
 
   const admin = createClient(requiredEnv("SUPABASE_URL"), requiredEnv("SUPABASE_SERVICE_ROLE_KEY"), {

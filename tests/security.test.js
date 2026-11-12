@@ -98,6 +98,7 @@ describe('contratos de autorização', () => {
     const syncScript = readFileSync(new URL('../scripts/sync-onedrive-remote.mjs', import.meta.url), 'utf8');
     assert.match(syncFunction, /input\.action === "download"/);
     assert.match(syncFunction, /hasServiceRole\(req\)/);
+    assert.match(syncFunction, /from\("sync_jobs"\)\.select\("id", \{ head: true \}\)/);
     assert.match(syncFunction, /Cache-Control": "no-store"/);
     assert.match(syncFunction, /redirect: "follow"/);
     assert.match(syncScript, /functions\/v1\/sync-onedrive/);
