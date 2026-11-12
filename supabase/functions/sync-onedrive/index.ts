@@ -125,8 +125,16 @@ async function secureWorkbookDownload(req: Request, jobId: string, retryFailed: 
     if (refreshError) throw new Error("Nao foi possivel atualizar a referencia da planilha para repeticao.");
   }
 
-  const response = await fetchWithRetry(`${GRAPH_ROOT}/items/${encodeURIComponent(item.id)}/content`, {
+  const redirectResponse = await fetchWithRetry(`${GRAPH_ROOT}/items/${encodeURIComponent(item.id)}/content`, {
     headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
+    redirect: "manual",
+  });
+  const downloadUrl = redirectResponse.headers.get("location");
+  if (!downloadUrl || ![301, 302, 303, 307, 308].includes(redirectResponse.status)) {
+    throw new Error(`Microsoft nao forneceu o download seguro (${redirectResponse.status}).`);
+  }
+  const response = await fetchWithRetry(downloadUrl, {
+    headers: { Accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
     redirect: "follow",
   });
   if (!response.ok) throw new Error(`Download seguro do OneDrive falhou (${response.status}).`);
