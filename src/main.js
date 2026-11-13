@@ -259,8 +259,13 @@ function commercialListResults() {
   if (state.busy) return '<div class="loading-state">Carregando produtos...</div>';
   if (!state.products.length) return '<div class="empty-state"><strong>Nenhum item encontrado</strong><span>Ajuste a pesquisa ou os filtros.</span></div>';
   const custom = state.listMode === 'custom';
+  const branchStock = (branch, quantity) => {
+    const level = stockLevel(quantity);
+    const value = quantity === null || quantity === undefined ? '—' : integer(quantity);
+    const description = `${branch}: ${value} · ${level.label}`;
+    return `<span class="branch-stock stock-${level.key}" title="${escapeHtml(description)}" aria-label="${escapeHtml(description)}"><i aria-hidden="true"></i><strong>${value}</strong></span>`;
+  };
   const rows = state.products.map((product) => {
-    const level = stockLevel(product.stock_origin);
     return `<tr>
       ${custom ? `<td class="list-check-cell" data-label="Selecionar"><input type="checkbox" data-list-product="${product.id}" ${state.listSelection.has(product.id) ? 'checked' : ''} aria-label="Incluir ${escapeHtml(product.code)}"></td>` : ''}
       <td data-label="Código"><span class="code-chip">${escapeHtml(product.code)}</span></td>
@@ -268,14 +273,14 @@ function commercialListResults() {
       <td data-label="Aplicação" class="list-application">${escapeHtml(commercialApplicationValues(product.applications).join(' · ') || '—')}</td>
       <td data-label="Ano" class="list-year">${escapeHtml(commercialYearValues(product.years).join(' · ') || '—')}</td>
       <td data-label="Preço" class="list-price">${product.price === null ? 'Sem preço' : money(product.price)}</td>
-      <td data-label="Estoque PR">${product.stock_pr === null ? '—' : integer(product.stock_pr)}</td>
-      <td data-label="Estoque SP">${product.stock_sp === null ? '—' : integer(product.stock_sp)}</td>
-      <td data-label="Disponibilidade"><span class="stock-badge stock-${level.key}"><i></i>${escapeHtml(level.label)}</span></td>
+      <td data-label="Estoque PR">${branchStock('PR', product.stock_pr)}</td>
+      <td data-label="Estoque SP">${branchStock('SP', product.stock_sp)}</td>
     </tr>`;
   }).join('');
   return `<section class="results-section commercial-list-results">
     <div class="results-meta"><span>${integer(state.productTotal)} item(ns)</span><span>Página ${state.productPage} de ${totalPages}</span></div>
-    <div class="table-wrap"><table class="commercial-list-table"><thead><tr>${custom ? '<th class="list-check-cell">Incluir</th>' : ''}<th>Código</th><th>Descrição</th><th>Aplicação</th><th>Ano</th><th>Preço</th><th>PR</th><th>SP</th><th>Disponibilidade</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="stock-legend" aria-label="Legenda de disponibilidade"><span class="stock-high"><i></i>Disponível <small>51+</small></span><span class="stock-low"><i></i>Confirmar <small>1–50</small></span><span class="stock-none"><i></i>Indisponível <small>0</small></span></div>
+    <div class="table-wrap"><table class="commercial-list-table"><thead><tr>${custom ? '<th class="list-check-cell">Incluir</th>' : ''}<th>Código</th><th>Descrição</th><th>Aplicação</th><th>Ano</th><th>Preço</th><th>PR</th><th>SP</th></tr></thead><tbody>${rows}</tbody></table></div>
     <div class="pagination"><button class="button button-secondary" data-page="${state.productPage - 1}" ${state.productPage <= 1 ? 'disabled' : ''}>Anterior</button><button class="button button-secondary" data-page="${state.productPage + 1}" ${state.productPage >= totalPages ? 'disabled' : ''}>Próxima</button></div>
   </section>`;
 }

@@ -244,8 +244,14 @@ svg { display: block; width: 22px; height: 22px; }
 .commercial-line-badges > span { flex-basis: 100%; color: #b9d9f5; font-size: .65rem; font-weight: 800; letter-spacing: .08em; text-align: right; text-transform: uppercase; }
 .commercial-line-badges strong { border: 1px solid rgba(255,255,255,.28); border-radius: 999px; background: rgba(255,255,255,.1); padding: 6px 10px; font-size: .7rem; }
 .commercial-list-results { border: 1px solid var(--slate-200); border-radius: 14px; background: #fff; padding: 8px 8px 14px; box-shadow: 0 5px 20px rgba(11,31,58,.04); }
-.commercial-list-results .results-meta { padding: 7px 7px 12px; }
-.commercial-list-table { min-width: 1050px; }
+.commercial-list-results .results-meta { padding: 7px; }
+.stock-legend { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px 14px; padding: 0 7px 10px; font-size: .68rem; font-weight: 750; }
+.stock-legend span, .branch-stock { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.stock-legend i, .branch-stock i { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 999px; background: currentColor; }
+.stock-legend small { color: var(--slate-500); font-size: .62rem; font-weight: 650; }
+.branch-stock { min-width: 38px; font-size: .78rem; }
+.branch-stock strong { color: var(--slate-700); font-weight: 700; }
+.commercial-list-table { min-width: 960px; }
 .commercial-list-table th { background: var(--slate-100); color: var(--navy-800); }
 .commercial-list-table th:first-child { border-top-left-radius: 9px; }
 .commercial-list-table th:last-child { border-top-right-radius: 9px; }
