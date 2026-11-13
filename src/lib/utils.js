@@ -81,16 +81,23 @@ function commercialTextKey(value) {
 
 const COMMERCIAL_TRAILING_YEAR = /\s*\(?([\u2018\u2019']?\d{2,4}\s*[/\u2013\u2014-]\s*(?:[\u2018\u2019']?\d{2,4}|\.{3}))\)?\s*\*?$/;
 
-function preferredApplicationYears(values) {
-  const parsed = splitCommercialValues(values).map((value) => {
-    const match = value.match(COMMERCIAL_TRAILING_YEAR);
-    const application = value.replace(COMMERCIAL_TRAILING_YEAR, '').trim().replace(/[,:/-]+$/, '').trim();
-    return { applicationKey: commercialTextKey(application), year: match?.[1] || '' };
-  });
-  const plainApplications = new Set(parsed.filter((value) => !value.year).map((value) => value.applicationKey).filter(Boolean));
-  return parsed
-    .filter((value) => value.year && plainApplications.has(value.applicationKey))
-    .map((value) => value.year);
+function applicationYears(values) {
+  return splitCommercialValues(values)
+    .map((value) => value.match(COMMERCIAL_TRAILING_YEAR)?.[1] || '')
+    .filter(Boolean);
+}
+
+function commercialYearInterval(value) {
+  const match = String(value).match(/^(\d{2}|\d{4})\u2013(\d{2}|\d{4}|\.{3})$/);
+  if (!match) return null;
+  const startDigits = Number(match[1]);
+  const start = match[1].length === 4 ? startDigits : startDigits >= 50 ? 1900 + startDigits : 2000 + startDigits;
+  if (match[2] === '...') return { start, end: Number.POSITIVE_INFINITY };
+  const endDigits = Number(match[2]);
+  if (match[2].length === 4) return { start, end: endDigits };
+  let end = Math.floor(start / 100) * 100 + endDigits;
+  if (end < start) end += 100;
+  return { start, end };
 }
 
 export function commercialApplicationValues(values) {
@@ -106,8 +113,7 @@ export function commercialApplicationValues(values) {
 
 export function commercialYearValues(values, applications = []) {
   const unique = new Map();
-  const applicationYears = preferredApplicationYears(applications);
-  const sourceValues = applicationYears.length ? applicationYears : splitCommercialValues(values);
+  const sourceValues = [...splitCommercialValues(values), ...applicationYears(applications)];
   for (const value of sourceValues) {
     const year = value
       .replace(/[\u2018\u2019']/g, '')
@@ -117,7 +123,17 @@ export function commercialYearValues(values, applications = []) {
     const key = commercialTextKey(year);
     if (key && !unique.has(key)) unique.set(key, year);
   }
-  return [...unique.values()];
+  const years = [...unique.values()];
+  return years.filter((year, index) => {
+    const interval = commercialYearInterval(year);
+    if (!interval) return true;
+    return !years.some((otherYear, otherIndex) => {
+      if (index === otherIndex) return false;
+      const other = commercialYearInterval(otherYear);
+      return other && other.start <= interval.start && other.end >= interval.end
+        && (other.start < interval.start || other.end > interval.end);
+    });
+  });
 }
 
 export function safeFileName(value) {

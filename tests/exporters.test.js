@@ -59,6 +59,23 @@ test('lista comercial prioriza o ano informado na aplicação consolidada', () =
   assert.equal(row.Ano, '94–08');
 });
 
+test('lista comercial remove períodos menores contidos em um período maior', () => {
+  const rows = commercialRows([{
+    code: 'ABC-4', description: 'Produto Corsa', applications: ['CORSA'], years: ['94/08', '96-08'],
+    price: 100, stock_pr: 1, stock_sp: 0, stock_origin: 1
+  }, {
+    code: 'ABC-5', description: 'Produto Victoria', applications: ['VICTORIA'], years: ['90-95', '94/95'],
+    price: 100, stock_pr: 1, stock_sp: 0, stock_origin: 1
+  }, {
+    code: 'ABC-6', description: 'Produto com períodos distintos', applications: ['MODELO'], years: ['93-95', '05/08'],
+    price: 100, stock_pr: 1, stock_sp: 0, stock_origin: 1
+  }]);
+
+  assert.equal(rows[0].Ano, '94–08');
+  assert.equal(rows[1].Ano, '90–95');
+  assert.equal(rows[2].Ano, '93–95; 05–08');
+});
+
 test('PDF da lista contém uma única tabela comercial com as novas colunas', () => {
   const pdf = buildPdfDocument(payload);
   const bytes = Buffer.from(pdf.output('arraybuffer'));
