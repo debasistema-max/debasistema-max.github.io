@@ -92,17 +92,24 @@ test('planilha de conferência destaca entradas manuais e calcula divergências'
     context: { destinationState: 'PR', originCode: 'PR', tableCode: 'PR-PR', sampleSize: 5 }
   });
   const sheet = workbook.Sheets['Conferência SAP'];
+  const summary = workbook.Sheets.Resumo;
 
-  assert.deepEqual(['A6', 'B6', 'E6', 'F6', 'N6', 'O6'].map((cell) => sheet[cell].v), [
+  assert.deepEqual(['A7', 'B7', 'E7', 'F7', 'O7', 'P7'].map((cell) => sheet[cell].v), [
     'Linha', 'Código', 'Preço portal', 'Preço SAP', 'Status', 'Observações'
   ]);
-  assert.equal(sheet.A7.v, 'Leve');
-  assert.equal(sheet.B7.v, 'ABC-1');
-  assert.equal(sheet.E7.v, 110);
-  assert.match(sheet.G7.f, /F7-E7/);
-  assert.match(sheet.J7.f, /I7-H7/);
-  assert.match(sheet.M7.f, /L7-K7/);
-  assert.match(sheet.N7.f, /DIVERGENTE/);
-  assert.equal(sheet.F7.s.fill.fgColor.rgb, 'FFF2CC');
+  assert.equal(sheet.A8.v, 'Leve');
+  assert.equal(sheet.B8.v, 'ABC-1');
+  assert.equal(sheet.E8.v, 110);
+  assert.match(sheet.G8.f, /F8-E8/);
+  assert.match(sheet.H8.f, /F8\/E8-1/);
+  assert.match(sheet.K8.f, /J8-I8/);
+  assert.match(sheet.N8.f, /M8-L8/);
+  assert.match(sheet.O8.f, /PORTAL SEM PREÇO/);
+  assert.match(sheet.O8.f, /DIVERGENTE/);
+  assert.equal(sheet.F8.s.fill.fgColor.rgb, 'FFF2CC');
+  assert.equal(sheet.B5.s.fill.fgColor.rgb, 'FFF2CC');
+  assert.match(summary.B8.f, /COUNTIF/);
+  assert.match(summary.C17.f, /COUNTIFS/);
+  assert.deepEqual(workbook.SheetNames, ['Resumo', 'Conferência SAP']);
   assert.equal(workbook.Props.Company, 'DebaPortal');
 });

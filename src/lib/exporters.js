@@ -111,16 +111,19 @@ export function exportExcel(payload) {
 
 export function buildSapValidationWorkbook({ items, context = {} }) {
   const headers = [
-    'Linha', 'Código', 'Descrição', 'Tabela', 'Preço portal', 'Preço SAP', 'Diferença preço',
+    'Linha', 'Código', 'Descrição', 'Tabela', 'Preço portal', 'Preço SAP', 'Diferença preço', 'Diferença %',
     'Estoque PR portal', 'Estoque PR SAP', 'Diferença PR', 'Estoque SP portal', 'Estoque SP SAP',
     'Diferença SP', 'Status', 'Observações'
   ];
   const tableLabel = [context.tableCode, context.tableName].filter(Boolean).join(' · ') || '—';
+  const headerRow = 7;
+  const firstDataRow = headerRow + 1;
   const values = [
     ['DebaPortal · Conferência manual SAP'],
     [`Amostra aleatória de ${context.sampleSize || 5} itens por linha`],
     ['Destino', context.destinationState || '—', 'Origem', context.originCode || '—', 'Tabela', tableLabel],
     ['Gerada em', context.generatedAt || new Date().toLocaleString('pt-BR'), 'Dados atualizados em', context.updatedAt || '—'],
+    ['Responsável', '', 'Conferido em', ''],
     [],
     headers,
     ...items.map((item) => [
@@ -129,7 +132,7 @@ export function buildSapValidationWorkbook({ items, context = {} }) {
       itemValue(item, 'description'),
       tableLabel,
       itemValue(item, 'price', null),
-      '', '',
+      '', '', '',
       itemValue(item, 'stock_pr', null),
       '', '',
       itemValue(item, 'stock_sp', null),
@@ -137,47 +140,99 @@ export function buildSapValidationWorkbook({ items, context = {} }) {
     ])
   ];
   const worksheet = XLSX.utils.aoa_to_sheet(values);
-  const lastRow = Math.max(6, items.length + 6);
+  const lastRow = Math.max(headerRow, items.length + headerRow);
   const titleStyle = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 18 }, fill: { fgColor: { rgb: '0B1F3A' } }, alignment: { vertical: 'center' } };
   const headerStyle = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '0B1F3A' } }, alignment: { vertical: 'center', wrapText: true } };
   const inputStyle = { fill: { fgColor: { rgb: 'FFF2CC' } }, alignment: { vertical: 'center' } };
   const formulaStyle = { fill: { fgColor: { rgb: 'DDEBF7' } }, alignment: { vertical: 'center' } };
   worksheet.A1.s = titleStyle;
   for (let column = 0; column < headers.length; column += 1) {
-    const address = XLSX.utils.encode_cell({ r: 5, c: column });
+    const address = XLSX.utils.encode_cell({ r: headerRow - 1, c: column });
     worksheet[address].s = headerStyle;
   }
-  for (let row = 7; row <= lastRow; row += 1) {
+  for (const address of ['B5', 'D5']) {
+    worksheet[address] = worksheet[address] || { t: 's', v: '' };
+    worksheet[address].s = inputStyle;
+  }
+  for (let row = firstDataRow; row <= lastRow; row += 1) {
     worksheet[`G${row}`] = { t: 'n', f: `IF(F${row}="","",ROUND(F${row}-E${row},2))`, s: formulaStyle, z: 'R$ #,##0.00' };
-    worksheet[`J${row}`] = { t: 'n', f: `IF(I${row}="","",I${row}-H${row})`, s: formulaStyle, z: '0' };
-    worksheet[`M${row}`] = { t: 'n', f: `IF(L${row}="","",L${row}-K${row})`, s: formulaStyle, z: '0' };
-    worksheet[`N${row}`] = {
+    worksheet[`H${row}`] = { t: 'n', f: `IF(OR(F${row}="",E${row}="",E${row}=0),"",F${row}/E${row}-1)`, s: formulaStyle, z: '0.00%' };
+    worksheet[`K${row}`] = { t: 'n', f: `IF(J${row}="","",J${row}-I${row})`, s: formulaStyle, z: '0' };
+    worksheet[`N${row}`] = { t: 'n', f: `IF(M${row}="","",M${row}-L${row})`, s: formulaStyle, z: '0' };
+    worksheet[`O${row}`] = {
       t: 's',
-      f: `IF(OR(E${row}="",H${row}="",K${row}=""),"PORTAL SEM DADOS",IF(COUNTA(F${row},I${row},L${row})=0,"PENDENTE",IF(COUNTA(F${row},I${row},L${row})<3,"INCOMPLETO",IF(AND(ABS(G${row})<=0.01,J${row}=0,M${row}=0),"OK","DIVERGENTE"))))`,
+      f: `IF(E${row}="","PORTAL SEM PREÇO",IF(OR(I${row}="",L${row}=""),"PORTAL SEM ESTOQUE",IF(COUNTA(F${row},J${row},M${row})=0,"PENDENTE",IF(COUNTA(F${row},J${row},M${row})<3,"INCOMPLETO",IF(AND(ABS(G${row})<=0.01,K${row}=0,N${row}=0),"OK","DIVERGENTE")))))`,
       s: formulaStyle
     };
-    for (const column of ['F', 'I', 'L', 'O']) {
+    for (const column of ['F', 'J', 'M', 'P']) {
       const address = `${column}${row}`;
       worksheet[address] = worksheet[address] || { t: 's', v: '' };
       worksheet[address].s = inputStyle;
     }
     for (const column of ['E', 'F']) if (worksheet[`${column}${row}`]) worksheet[`${column}${row}`].z = 'R$ #,##0.00';
-    for (const column of ['H', 'I', 'K', 'L']) if (worksheet[`${column}${row}`]) worksheet[`${column}${row}`].z = '0';
+    for (const column of ['I', 'J', 'L', 'M']) if (worksheet[`${column}${row}`]) worksheet[`${column}${row}`].z = '0';
   }
-  worksheet['!ref'] = `A1:O${lastRow}`;
+  worksheet['!ref'] = `A1:P${lastRow}`;
   worksheet['!merges'] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: 14 } },
-    { s: { r: 1, c: 0 }, e: { r: 1, c: 14 } }
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 15 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 15 } }
   ];
-  worksheet['!rows'] = [{ hpt: 28 }, { hpt: 20 }, { hpt: 20 }, { hpt: 20 }, { hpt: 8 }, { hpt: 32 }];
+  worksheet['!rows'] = [{ hpt: 28 }, { hpt: 20 }, { hpt: 20 }, { hpt: 20 }, { hpt: 22 }, { hpt: 8 }, { hpt: 32 }];
   worksheet['!cols'] = [
-    { wch: 17 }, { wch: 17 }, { wch: 42 }, { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 17 },
-    { wch: 17 }, { wch: 15 }, { wch: 14 }, { wch: 17 }, { wch: 15 }, { wch: 14 }, { wch: 19 }, { wch: 34 }
+    { wch: 17 }, { wch: 17 }, { wch: 42 }, { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 17 }, { wch: 14 },
+    { wch: 17 }, { wch: 15 }, { wch: 14 }, { wch: 17 }, { wch: 15 }, { wch: 14 }, { wch: 21 }, { wch: 34 }
   ];
-  worksheet['!autofilter'] = { ref: `A6:O${lastRow}` };
-  worksheet['!freeze'] = { xSplit: 0, ySplit: 6, topLeftCell: 'A7', activePane: 'bottomLeft', state: 'frozen' };
+  worksheet['!autofilter'] = { ref: `A${headerRow}:P${lastRow}` };
+  worksheet['!freeze'] = { xSplit: 2, ySplit: headerRow, topLeftCell: `C${firstDataRow}`, activePane: 'bottomRight', state: 'frozen' };
+
+  const lines = [...new Set(items.map((item) => item.validation_line || itemValue(item, 'product_line', 'Sem linha')))];
+  const summaryValues = [
+    ['DebaPortal · Resumo da conferência SAP'],
+    ['O resumo será atualizado automaticamente conforme os valores do SAP forem preenchidos.'],
+    ['Destino', context.destinationState || '—', 'Origem', context.originCode || '—', 'Tabela', tableLabel],
+    ['Gerada em', context.generatedAt || new Date().toLocaleString('pt-BR'), 'Dados atualizados em', context.updatedAt || '—'],
+    [],
+    ['Indicador', 'Quantidade'],
+    ['Total da amostra'], ['OK'], ['Divergentes'], ['Pendentes'], ['Incompletos'], ['Portal sem preço'], ['Portal sem estoque'],
+    [],
+    ['Resultado por linha'],
+    ['Linha', 'Total', 'OK', 'Divergentes', 'Pendentes', 'Problemas no portal'],
+    ...lines.map((line) => [line])
+  ];
+  const summary = XLSX.utils.aoa_to_sheet(summaryValues);
+  const statusRange = `'Conferência SAP'!$O$${firstDataRow}:$O$${lastRow}`;
+  const lineRange = `'Conferência SAP'!$A$${firstDataRow}:$A$${lastRow}`;
+  summary.B7 = { t: 'n', f: `COUNTA('Conferência SAP'!$B$${firstDataRow}:$B$${lastRow})` };
+  summary.B8 = { t: 'n', f: `COUNTIF(${statusRange},"OK")` };
+  summary.B9 = { t: 'n', f: `COUNTIF(${statusRange},"DIVERGENTE")` };
+  summary.B10 = { t: 'n', f: `COUNTIF(${statusRange},"PENDENTE")` };
+  summary.B11 = { t: 'n', f: `COUNTIF(${statusRange},"INCOMPLETO")` };
+  summary.B12 = { t: 'n', f: `COUNTIF(${statusRange},"PORTAL SEM PREÇO")` };
+  summary.B13 = { t: 'n', f: `COUNTIF(${statusRange},"PORTAL SEM ESTOQUE")` };
+  for (let row = 17; row < 17 + lines.length; row += 1) {
+    summary[`B${row}`] = { t: 'n', f: `COUNTIF(${lineRange},A${row})` };
+    summary[`C${row}`] = { t: 'n', f: `COUNTIFS(${lineRange},A${row},${statusRange},"OK")` };
+    summary[`D${row}`] = { t: 'n', f: `COUNTIFS(${lineRange},A${row},${statusRange},"DIVERGENTE")` };
+    summary[`E${row}`] = { t: 'n', f: `COUNTIFS(${lineRange},A${row},${statusRange},"PENDENTE")+COUNTIFS(${lineRange},A${row},${statusRange},"INCOMPLETO")` };
+    summary[`F${row}`] = { t: 'n', f: `COUNTIFS(${lineRange},A${row},${statusRange},"PORTAL SEM PREÇO")+COUNTIFS(${lineRange},A${row},${statusRange},"PORTAL SEM ESTOQUE")` };
+  }
+  summary.A1.s = titleStyle;
+  for (const address of ['A6', 'B6', 'A16', 'B16', 'C16', 'D16', 'E16', 'F16']) if (summary[address]) summary[address].s = headerStyle;
+  for (let row = 7; row <= 13; row += 1) {
+    summary[`A${row}`].s = { font: { bold: row === 7 }, alignment: { vertical: 'center' } };
+    summary[`B${row}`].s = formulaStyle;
+  }
+  summary['!ref'] = `A1:F${Math.max(17, 16 + lines.length)}`;
+  summary['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } },
+    { s: { r: 14, c: 0 }, e: { r: 14, c: 5 } }
+  ];
+  summary['!cols'] = [{ wch: 25 }, { wch: 16 }, { wch: 16 }, { wch: 18 }, { wch: 16 }, { wch: 21 }];
+  summary['!rows'] = [{ hpt: 28 }, { hpt: 22 }];
 
   const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, summary, 'Resumo');
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Conferência SAP');
   workbook.Props = { Title: 'DebaPortal - Conferência manual SAP', Subject: 'Validação manual de preços e estoques', Company: 'DebaPortal' };
   workbook.Workbook = { CalcPr: { calcMode: 'auto', fullCalcOnLoad: true, forceFullCalc: true } };
