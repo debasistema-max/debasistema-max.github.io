@@ -79,11 +79,24 @@ function commercialTextKey(value) {
     .replace(/[^a-z0-9]+/g, '');
 }
 
+const COMMERCIAL_TRAILING_YEAR = /\s*\(?([\u2018\u2019']?\d{2,4}\s*[/\u2013\u2014-]\s*(?:[\u2018\u2019']?\d{2,4}|\.{3}))\)?\s*\*?$/;
+
+function preferredApplicationYears(values) {
+  const parsed = splitCommercialValues(values).map((value) => {
+    const match = value.match(COMMERCIAL_TRAILING_YEAR);
+    const application = value.replace(COMMERCIAL_TRAILING_YEAR, '').trim().replace(/[,:/-]+$/, '').trim();
+    return { applicationKey: commercialTextKey(application), year: match?.[1] || '' };
+  });
+  const plainApplications = new Set(parsed.filter((value) => !value.year).map((value) => value.applicationKey).filter(Boolean));
+  return parsed
+    .filter((value) => value.year && plainApplications.has(value.applicationKey))
+    .map((value) => value.year);
+}
+
 export function commercialApplicationValues(values) {
   const unique = new Map();
-  const trailingYear = /\s*\(?[\u2018\u2019']?\d{2,4}\s*[/\u2013\u2014-]\s*(?:[\u2018\u2019']?\d{2,4}|\.{3})\)?\s*\*?$/;
   for (const value of splitCommercialValues(values)) {
-    const application = value.replace(trailingYear, '').trim().replace(/[,:/-]+$/, '').trim();
+    const application = value.replace(COMMERCIAL_TRAILING_YEAR, '').trim().replace(/[,:/-]+$/, '').trim();
     if (!application) continue;
     const key = commercialTextKey(application);
     if (key && !unique.has(key)) unique.set(key, application);
@@ -91,9 +104,11 @@ export function commercialApplicationValues(values) {
   return [...unique.values()];
 }
 
-export function commercialYearValues(values) {
+export function commercialYearValues(values, applications = []) {
   const unique = new Map();
-  for (const value of splitCommercialValues(values)) {
+  const applicationYears = preferredApplicationYears(applications);
+  const sourceValues = applicationYears.length ? applicationYears : splitCommercialValues(values);
+  for (const value of sourceValues) {
     const year = value
       .replace(/[\u2018\u2019']/g, '')
       .replace(/\s*[/\u2013\u2014-]\s*/g, '\u2013')

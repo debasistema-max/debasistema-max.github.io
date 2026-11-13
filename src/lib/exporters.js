@@ -46,7 +46,7 @@ export function commercialRows(items) {
       Código: itemValue(item, 'code'),
       Descrição: itemValue(item, 'description'),
       Aplicação: commercialApplicationValues(itemValue(item, 'applications', [])).join('; '),
-      Ano: commercialYearValues(itemValue(item, 'years', [])).join('; '),
+      Ano: commercialYearValues(itemValue(item, 'years', []), itemValue(item, 'applications', [])).join('; '),
       Preço: itemValue(item, 'price', null),
       'Estoque PR': itemValue(item, 'stock_pr', null),
       'Estoque SP': itemValue(item, 'stock_sp', null),

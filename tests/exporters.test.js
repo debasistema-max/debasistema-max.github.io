@@ -43,6 +43,22 @@ test('lista comercial remove ano e grafias repetidas da aplicação', () => {
   assert.equal(row.Ano, '93–95; 05–08');
 });
 
+test('lista comercial prioriza o ano informado na aplicação consolidada', () => {
+  const [row] = commercialRows([{
+    code: 'ABC-3',
+    description: 'Retrovisor LD',
+    applications: ['CORSA', 'CORSA 94/08'],
+    years: ['94/08', '96-08'],
+    price: 100,
+    stock_pr: 1,
+    stock_sp: 0,
+    stock_origin: 1
+  }]);
+
+  assert.equal(row.Aplicação, 'CORSA');
+  assert.equal(row.Ano, '94–08');
+});
+
 test('PDF da lista contém uma única tabela comercial com as novas colunas', () => {
   const pdf = buildPdfDocument(payload);
   const bytes = Buffer.from(pdf.output('arraybuffer'));

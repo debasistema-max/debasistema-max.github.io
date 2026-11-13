@@ -271,7 +271,7 @@ function commercialListResults() {
       <td data-label="Código"><span class="code-chip">${escapeHtml(product.code)}</span></td>
       <td data-label="Descrição" class="list-description"><strong>${escapeHtml(product.description)}</strong><small>${escapeHtml(product.category || 'Sem categoria')}</small></td>
       <td data-label="Aplicação" class="list-application">${escapeHtml(commercialApplicationValues(product.applications).join(' · ') || '—')}</td>
-      <td data-label="Ano" class="list-year">${escapeHtml(commercialYearValues(product.years).join(' · ') || '—')}</td>
+      <td data-label="Ano" class="list-year">${escapeHtml(commercialYearValues(product.years, product.applications).join(' · ') || '—')}</td>
       <td data-label="Preço" class="list-price">${product.price === null ? 'Sem preço' : money(product.price)}</td>
       <td data-label="Estoque PR">${branchStock('PR', product.stock_pr)}</td>
       <td data-label="Estoque SP">${branchStock('SP', product.stock_sp)}</td>
