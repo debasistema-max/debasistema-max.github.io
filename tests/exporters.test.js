@@ -86,18 +86,18 @@ test('PDF da lista contém uma única tabela comercial com as novas colunas', ()
 test('planilha de conferência destaca entradas manuais e calcula divergências', () => {
   const workbook = buildSapValidationWorkbook({
     items: [{
-      validation_line: 'Leve', code: 'ABC-1', description: 'Produto', price: 110,
+      validation_category: 'Amortecedor', category: 'Amortecedor', code: 'ABC-1', description: 'Produto', price: 110,
       stock_pr: 8, stock_sp: 3
     }],
-    context: { destinationState: 'PR', originCode: 'PR', tableCode: 'PR-PR', sampleByLine: { Leve: 3, Pesada: 5, Utilitário: 7 } }
+    context: { destinationState: 'PR', originCode: 'PR', tableCode: 'PR-PR', samplePerCategory: 5 }
   });
   const sheet = workbook.Sheets['Conferência SAP'];
   const summary = workbook.Sheets.Resumo;
 
   assert.deepEqual(['A7', 'B7', 'E7', 'F7', 'O7', 'P7'].map((cell) => sheet[cell].v), [
-    'Linha', 'Código', 'Preço portal', 'Preço SAP', 'Status', 'Observações'
+    'Categoria', 'Código', 'Preço portal', 'Preço SAP', 'Status', 'Observações'
   ]);
-  assert.equal(sheet.A8.v, 'Leve');
+  assert.equal(sheet.A8.v, 'Amortecedor');
   assert.equal(sheet.B8.v, 'ABC-1');
   assert.equal(sheet.E8.v, 110);
   assert.match(sheet.G8.f, /F8-E8/);
@@ -108,9 +108,9 @@ test('planilha de conferência destaca entradas manuais e calcula divergências'
   assert.match(sheet.O8.f, /DIVERGENTE/);
   assert.equal(sheet.F8.s.fill.fgColor.rgb, 'FFF2CC');
   assert.equal(sheet.B5.s.fill.fgColor.rgb, 'FFF2CC');
-  assert.match(sheet.A2.v, /Leve: 3/);
-  assert.match(sheet.A2.v, /Pesada: 5/);
-  assert.match(sheet.A2.v, /Utilitário: 7/);
+  assert.match(sheet.A2.v, /5 itens por categoria/);
+  assert.equal(summary.A16.v, 'Categoria');
+  assert.equal(summary.A17.v, 'Amortecedor');
   assert.match(summary.B8.f, /COUNTIF/);
   assert.match(summary.C17.f, /COUNTIFS/);
   assert.deepEqual(workbook.SheetNames, ['Resumo', 'Conferência SAP']);

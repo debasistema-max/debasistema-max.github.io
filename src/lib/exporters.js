@@ -111,26 +111,24 @@ export function exportExcel(payload) {
 
 export function buildSapValidationWorkbook({ items, context = {} }) {
   const headers = [
-    'Linha', 'Código', 'Descrição', 'Tabela', 'Preço portal', 'Preço SAP', 'Diferença preço', 'Diferença %',
+    'Categoria', 'Código', 'Descrição', 'Tabela', 'Preço portal', 'Preço SAP', 'Diferença preço', 'Diferença %',
     'Estoque PR portal', 'Estoque PR SAP', 'Diferença PR', 'Estoque SP portal', 'Estoque SP SAP',
     'Diferença SP', 'Status', 'Observações'
   ];
   const tableLabel = [context.tableCode, context.tableName].filter(Boolean).join(' · ') || '—';
-  const sampleDescription = context.sampleByLine && typeof context.sampleByLine === 'object'
-    ? Object.entries(context.sampleByLine).filter(([, quantity]) => Number(quantity) > 0).map(([line, quantity]) => `${line}: ${quantity}`).join(' · ')
-    : `${context.sampleSize || 5} itens por linha`;
+  const sampleDescription = `${context.samplePerCategory || 5} itens por categoria`;
   const headerRow = 7;
   const firstDataRow = headerRow + 1;
   const values = [
     ['DebaPortal · Conferência manual SAP'],
-    [`Amostra aleatória por linha · ${sampleDescription}`],
+    [`Amostra aleatória · ${sampleDescription}`],
     ['Destino', context.destinationState || '—', 'Origem', context.originCode || '—', 'Tabela', tableLabel],
     ['Gerada em', context.generatedAt || new Date().toLocaleString('pt-BR'), 'Dados atualizados em', context.updatedAt || '—'],
     ['Responsável', '', 'Conferido em', ''],
     [],
     headers,
     ...items.map((item) => [
-      item.validation_line || itemValue(item, 'product_line', 'Sem linha'),
+      item.validation_category || itemValue(item, 'category', 'Sem categoria'),
       itemValue(item, 'code'),
       itemValue(item, 'description'),
       tableLabel,
@@ -188,7 +186,7 @@ export function buildSapValidationWorkbook({ items, context = {} }) {
   worksheet['!autofilter'] = { ref: `A${headerRow}:P${lastRow}` };
   worksheet['!freeze'] = { xSplit: 2, ySplit: headerRow, topLeftCell: `C${firstDataRow}`, activePane: 'bottomRight', state: 'frozen' };
 
-  const lines = [...new Set(items.map((item) => item.validation_line || itemValue(item, 'product_line', 'Sem linha')))];
+  const categories = [...new Set(items.map((item) => item.validation_category || itemValue(item, 'category', 'Sem categoria')))];
   const summaryValues = [
     ['DebaPortal · Resumo da conferência SAP'],
     ['O resumo será atualizado automaticamente conforme os valores do SAP forem preenchidos.'],
@@ -198,13 +196,13 @@ export function buildSapValidationWorkbook({ items, context = {} }) {
     ['Indicador', 'Quantidade'],
     ['Total da amostra'], ['OK'], ['Divergentes'], ['Pendentes'], ['Incompletos'], ['Portal sem preço'], ['Portal sem estoque'],
     [],
-    ['Resultado por linha'],
-    ['Linha', 'Total', 'OK', 'Divergentes', 'Pendentes', 'Problemas no portal'],
-    ...lines.map((line) => [line])
+    ['Resultado por categoria'],
+    ['Categoria', 'Total', 'OK', 'Divergentes', 'Pendentes', 'Problemas no portal'],
+    ...categories.map((category) => [category])
   ];
   const summary = XLSX.utils.aoa_to_sheet(summaryValues);
   const statusRange = `'Conferência SAP'!$O$${firstDataRow}:$O$${lastRow}`;
-  const lineRange = `'Conferência SAP'!$A$${firstDataRow}:$A$${lastRow}`;
+  const categoryRange = `'Conferência SAP'!$A$${firstDataRow}:$A$${lastRow}`;
   summary.B7 = { t: 'n', f: `COUNTA('Conferência SAP'!$B$${firstDataRow}:$B$${lastRow})` };
   summary.B8 = { t: 'n', f: `COUNTIF(${statusRange},"OK")` };
   summary.B9 = { t: 'n', f: `COUNTIF(${statusRange},"DIVERGENTE")` };
@@ -212,12 +210,12 @@ export function buildSapValidationWorkbook({ items, context = {} }) {
   summary.B11 = { t: 'n', f: `COUNTIF(${statusRange},"INCOMPLETO")` };
   summary.B12 = { t: 'n', f: `COUNTIF(${statusRange},"PORTAL SEM PREÇO")` };
   summary.B13 = { t: 'n', f: `COUNTIF(${statusRange},"PORTAL SEM ESTOQUE")` };
-  for (let row = 17; row < 17 + lines.length; row += 1) {
-    summary[`B${row}`] = { t: 'n', f: `COUNTIF(${lineRange},A${row})` };
-    summary[`C${row}`] = { t: 'n', f: `COUNTIFS(${lineRange},A${row},${statusRange},"OK")` };
-    summary[`D${row}`] = { t: 'n', f: `COUNTIFS(${lineRange},A${row},${statusRange},"DIVERGENTE")` };
-    summary[`E${row}`] = { t: 'n', f: `COUNTIFS(${lineRange},A${row},${statusRange},"PENDENTE")+COUNTIFS(${lineRange},A${row},${statusRange},"INCOMPLETO")` };
-    summary[`F${row}`] = { t: 'n', f: `COUNTIFS(${lineRange},A${row},${statusRange},"PORTAL SEM PREÇO")+COUNTIFS(${lineRange},A${row},${statusRange},"PORTAL SEM ESTOQUE")` };
+  for (let row = 17; row < 17 + categories.length; row += 1) {
+    summary[`B${row}`] = { t: 'n', f: `COUNTIF(${categoryRange},A${row})` };
+    summary[`C${row}`] = { t: 'n', f: `COUNTIFS(${categoryRange},A${row},${statusRange},"OK")` };
+    summary[`D${row}`] = { t: 'n', f: `COUNTIFS(${categoryRange},A${row},${statusRange},"DIVERGENTE")` };
+    summary[`E${row}`] = { t: 'n', f: `COUNTIFS(${categoryRange},A${row},${statusRange},"PENDENTE")+COUNTIFS(${categoryRange},A${row},${statusRange},"INCOMPLETO")` };
+    summary[`F${row}`] = { t: 'n', f: `COUNTIFS(${categoryRange},A${row},${statusRange},"PORTAL SEM PREÇO")+COUNTIFS(${categoryRange},A${row},${statusRange},"PORTAL SEM ESTOQUE")` };
   }
   summary.A1.s = titleStyle;
   for (const address of ['A6', 'B6', 'A16', 'B16', 'C16', 'D16', 'E16', 'F16']) if (summary[address]) summary[address].s = headerStyle;
@@ -225,7 +223,7 @@ export function buildSapValidationWorkbook({ items, context = {} }) {
     summary[`A${row}`].s = { font: { bold: row === 7 }, alignment: { vertical: 'center' } };
     summary[`B${row}`].s = formulaStyle;
   }
-  summary['!ref'] = `A1:F${Math.max(17, 16 + lines.length)}`;
+  summary['!ref'] = `A1:F${Math.max(17, 16 + categories.length)}`;
   summary['!merges'] = [
     { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
     { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } },

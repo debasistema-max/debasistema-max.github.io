@@ -525,7 +525,7 @@ function renderAdmin() {
       <section class="panel admin-card"><div class="section-title"><span>1</span><div><h2>Importação manual</h2><p>XLSX, XLS ou CSV. O arquivo original não é enviado nem armazenado.</p></div></div><input id="import-file" type="file" accept=".xlsx,.xls,.csv"><div id="import-preview">${pendingImport ? `<div class="import-ready"><strong>${escapeHtml(pendingImport.fileName)}</strong><span>${integer(pendingImport.rows.length)} linhas · tipo ${escapeHtml(pendingImport.kind)}</span><button class="button button-primary" data-action="commit-import">Validar e importar</button></div>` : '<p class="muted">Selecione um arquivo para validar os cabeçalhos.</p>'}</div></section>
       <section class="panel admin-card"><div class="section-title"><span>2</span><div><h2>Catálogo online</h2><p>Planilha e fotos são sincronizadas somente quando um administrador solicitar.</p></div></div><p>Última atualização: <strong>${escapeHtml(formatDateTime(state.lastSync?.finished_at || state.lastSync?.started_at))}</strong></p>${syncStatus}<div class="admin-sync-actions"><button class="button button-primary" data-action="sync-drive" ${syncActive ? 'disabled' : ''}>${syncActive ? 'Sincronizando…' : 'Sincronizar tudo'}</button><button class="button button-secondary" data-action="sync-photos" ${syncActive ? 'disabled' : ''}>Atualizar fotos pelo site</button></div>${connectionMarkup}</section>
       ${syncHistoryPanel()}
-      <section class="panel admin-card sap-validation-card"><div class="section-title"><span>4</span><div><h2>Conferência manual SAP</h2><p>Compara preços e estoques em uma amostra aleatória de cada linha.</p></div></div><div class="sap-validation-context"><span>Destino <strong>${escapeHtml(state.destinationState || '—')}</strong></span><span>Origem <strong>${escapeHtml(state.originCode || '—')}</strong></span><span>Tabela <strong>${escapeHtml(selectedTable?.code || 'Não selecionada')}</strong></span></div><fieldset class="sap-validation-lines"><legend>Quantidade por linha</legend>${COMMERCIAL_LINES.map((line) => `<label>${escapeHtml(line)}<input type="number" min="0" max="50" step="1" value="5" data-sap-line="${escapeHtml(line)}"></label>`).join('')}</fieldset><p class="muted">Use zero para não incluir uma linha. A planilha terá resumo automático; preencha somente as células amarelas com os valores consultados no SAP.</p><button class="button button-primary" data-action="export-sap-validation" ${state.busy || !state.priceTableId ? 'disabled' : ''}>${state.busy ? 'Preparando…' : 'Gerar nova amostra'}</button></section>
+      <section class="panel admin-card sap-validation-card"><div class="section-title"><span>4</span><div><h2>Conferência manual SAP</h2><p>Compara preços e estoques em uma amostra aleatória de cada categoria.</p></div></div><div class="sap-validation-context"><span>Destino <strong>${escapeHtml(state.destinationState || '—')}</strong></span><span>Origem <strong>${escapeHtml(state.originCode || '—')}</strong></span><span>Tabela <strong>${escapeHtml(selectedTable?.code || 'Não selecionada')}</strong></span></div><label class="sap-validation-option">Itens por categoria<input id="sap-sample-per-category" type="number" min="1" max="50" step="1" value="5"></label><p class="muted">Serão sorteados até essa quantidade em cada categoria cadastrada, como Amortecedor, Caixa de direção, Bomba e Farol. A planilha terá resumo automático; preencha somente as células amarelas com os valores consultados no SAP.</p><button class="button button-primary" data-action="export-sap-validation" ${state.busy || !state.priceTableId ? 'disabled' : ''}>${state.busy ? 'Preparando…' : 'Gerar nova amostra'}</button></section>
       <section class="panel admin-card"><div class="section-title"><span>5</span><div><h2>Armazenamento</h2><p>Monitoramento das tabelas estruturadas do DebaPortal.</p></div></div>${storageAlert}${summary.storage.length ? `<ul class="metric-list">${summary.storage.map((row) => `<li><span>${escapeHtml(row.relation || row.table_name)}</span><strong>${escapeHtml(row.pretty_size || `${row.bytes || 0} bytes`)}</strong></li>`).join('')}</ul>` : '<p class="muted">Resumo indisponível.</p>'}</section>
       <section class="panel admin-card"><div class="section-title"><span>6</span><div><h2>Filiais</h2><p>Cadastre origens antes das tabelas comerciais.</p></div></div><form id="branch-form" class="compact-form"><input name="code" maxlength="20" placeholder="Código (ex.: SP)" required><input name="name" maxlength="120" placeholder="Nome da filial" required><select name="state" required><option value="">UF</option>${stateOptions('')}</select><button class="button button-primary" type="submit">Adicionar filial</button></form><ul class="inline-list">${summary.branches.map((branch) => `<li><strong>${escapeHtml(branch.code)}</strong><span>${escapeHtml(branch.name)} · ${escapeHtml(branch.state)}</span></li>`).join('')}</ul></section>
       <section class="panel admin-card"><div class="section-title"><span>7</span><div><h2>Tabelas comerciais</h2><p>Destino e origem definem onde cada tabela pode ser usada.</p></div></div><form id="price-table-form" class="compact-form"><input name="code" maxlength="60" placeholder="Código" required><input name="name" maxlength="160" placeholder="Nome" required><input name="version" type="number" min="1" value="1" required><select name="destinationState"><option value="">Todos os destinos</option>${stateOptions('')}</select><select name="originBranchId"><option value="">Todas as origens</option>${summary.branches.map((branch) => `<option value="${branch.id}">${escapeHtml(branch.code)} · ${escapeHtml(branch.name)}</option>`).join('')}</select><input name="validFrom" type="date" value="${new Date().toISOString().slice(0, 10)}" required><button class="button button-primary" type="submit">Criar tabela</button></form><ul class="inline-list">${state.priceTables.map((table) => `<li><strong>${escapeHtml(table.code)} · v${table.version}</strong><span>${escapeHtml(table.name)} · ${escapeHtml(table.destination_state || 'Todos')}</span></li>`).join('')}</ul></section>
@@ -1112,10 +1112,7 @@ async function handleSapValidationExport() {
   if (!state.priceTableId) {
     setToast('Selecione uma tabela comercial antes de gerar a conferência.', 'error'); updateView(); return;
   }
-  const sampleByLine = Object.fromEntries([...root.querySelectorAll('[data-sap-line]')].map((input) => [input.dataset.sapLine, Math.min(50, Math.max(0, Math.floor(Number(input.value) || 0)))]));
-  if (!Object.values(sampleByLine).some((quantity) => quantity > 0)) {
-    setToast('Informe pelo menos um item em uma linha comercial.', 'error'); updateView(); return;
-  }
+  const samplePerCategory = Math.min(50, Math.max(1, Math.floor(Number(root.querySelector('#sap-sample-per-category')?.value) || 5)));
   state.busy = true; updateView();
   try {
     const items = await api.searchAllProducts({
@@ -1128,8 +1125,8 @@ async function handleSapValidationExport() {
       brand: '',
       inStockOnly: false
     });
-    const { sampleProductsByLine } = await import('./lib/sap-validation.js');
-    const sample = sampleProductsByLine(items, sampleByLine);
+    const { sampleProductsByCategory } = await import('./lib/sap-validation.js');
+    const sample = sampleProductsByCategory(items, samplePerCategory);
     if (!sample.length) throw new Error('Nenhum produto ativo foi encontrado para a amostragem.');
     const selectedTable = state.priceTables.find((table) => table.id === state.priceTableId);
     const { exportSapValidationExcel } = await import('./lib/exporters.js');
@@ -1142,7 +1139,7 @@ async function handleSapValidationExport() {
         tableName: selectedTable?.name || '',
         updatedAt: formatDateTime(state.lastSync?.finished_at || state.lastSync?.started_at),
         generatedAt: new Date().toLocaleString('pt-BR'),
-        sampleByLine
+        samplePerCategory
       }
     });
     setToast(`${integer(sample.length)} item(ns) sorteado(s) para conferência manual.`, 'success');
