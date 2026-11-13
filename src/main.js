@@ -511,10 +511,14 @@ function renderAdmin() {
   const syncStatus = syncJob
     ? `<div class="notice ${syncJob.status === 'FALHOU' ? 'notice-error' : ''}"><strong>${escapeHtml(syncLabels[syncJob.status] || syncJob.status)}</strong>${syncJob.summary?.produtos !== undefined ? `<span>${integer(syncJob.summary.produtos)} produto(s)</span>` : ''}${syncJob.summary?.precos !== undefined ? `<span>${integer(syncJob.summary.precos)} preço(s)</span>` : ''}${syncJob.summary?.estoque !== undefined ? `<span>${integer(syncJob.summary.estoque)} registro(s) de estoque</span>` : ''}${syncJob.summary?.fotos !== undefined && syncJob.summary?.fotos !== null ? `<span>${integer(syncJob.summary.fotos)} foto(s) catalogada(s), com busca alternativa para os demais itens</span>` : ''}${syncJob.summary?.aviso_fotos ? `<span>${escapeHtml(syncJob.summary.aviso_fotos)}</span>` : ''}${syncJob.error_message ? `<span>${escapeHtml(syncJob.error_message)}</span>` : ''}</div>`
     : '<p class="muted">Nenhuma solicitação online registrada.</p>';
+  const connection = state.oneDriveConnection;
+  const connectionMarkup = connection
+    ? `<div class="onedrive-connect" role="status"><span>Código Microsoft</span><strong>${escapeHtml(connection.user_code)}</strong><p>Abra o link, entre na conta que contém a planilha e informe este código.</p><a class="button button-secondary" href="${escapeHtml(connection.verification_uri)}" target="_blank" rel="noopener noreferrer">Abrir Microsoft</a><button class="button button-primary" type="button" data-action="complete-onedrive-connection">Confirmar conexão</button></div>`
+    : '<button class="button button-ghost" type="button" data-action="start-onedrive-connection">Reconectar OneDrive</button>';
   return `${pageHeader('Configuração', 'Administração', 'Gerencie a atualização dos dados sem expor credenciais no navegador.')}
     <div class="admin-grid">
       <section class="panel admin-card"><div class="section-title"><span>1</span><div><h2>Importação manual</h2><p>XLSX, XLS ou CSV. O arquivo original não é enviado nem armazenado.</p></div></div><input id="import-file" type="file" accept=".xlsx,.xls,.csv"><div id="import-preview">${pendingImport ? `<div class="import-ready"><strong>${escapeHtml(pendingImport.fileName)}</strong><span>${integer(pendingImport.rows.length)} linhas · tipo ${escapeHtml(pendingImport.kind)}</span><button class="button button-primary" data-action="commit-import">Validar e importar</button></div>` : '<p class="muted">Selecione um arquivo para validar os cabeçalhos.</p>'}</div></section>
-      <section class="panel admin-card"><div class="section-title"><span>2</span><div><h2>Catálogo online</h2><p>Planilha e fotos são sincronizadas somente quando um administrador solicitar.</p></div></div><p>Última atualização: <strong>${escapeHtml(formatDateTime(state.lastSync?.finished_at || state.lastSync?.started_at))}</strong></p>${syncStatus}<div class="admin-sync-actions"><button class="button button-primary" data-action="sync-drive" ${syncActive ? 'disabled' : ''}>${syncActive ? 'Sincronizando…' : 'Sincronizar tudo'}</button><button class="button button-secondary" data-action="sync-photos" ${syncActive ? 'disabled' : ''}>Atualizar fotos pelo site</button></div></section>
+      <section class="panel admin-card"><div class="section-title"><span>2</span><div><h2>Catálogo online</h2><p>Planilha e fotos são sincronizadas somente quando um administrador solicitar.</p></div></div><p>Última atualização: <strong>${escapeHtml(formatDateTime(state.lastSync?.finished_at || state.lastSync?.started_at))}</strong></p>${syncStatus}<div class="admin-sync-actions"><button class="button button-primary" data-action="sync-drive" ${syncActive ? 'disabled' : ''}>${syncActive ? 'Sincronizando…' : 'Sincronizar tudo'}</button><button class="button button-secondary" data-action="sync-photos" ${syncActive ? 'disabled' : ''}>Atualizar fotos pelo site</button></div>${connectionMarkup}</section>
       ${syncHistoryPanel()}
       <section class="panel admin-card sap-validation-card"><div class="section-title"><span>4</span><div><h2>Conferência manual SAP</h2><p>Sorteia 5 produtos de cada linha e prepara a comparação de preços e estoques.</p></div></div><div class="sap-validation-context"><span>Destino <strong>${escapeHtml(state.destinationState || '—')}</strong></span><span>Origem <strong>${escapeHtml(state.originCode || '—')}</strong></span><span>Tabela <strong>${escapeHtml(selectedTable?.code || 'Não selecionada')}</strong></span></div><p class="muted">Na planilha, preencha somente as colunas amarelas com os valores consultados no SAP.</p><button class="button button-primary" data-action="export-sap-validation" ${state.busy || !state.priceTableId ? 'disabled' : ''}>${state.busy ? 'Preparando…' : 'Gerar amostra de conferência'}</button></section>
       <section class="panel admin-card"><div class="section-title"><span>5</span><div><h2>Armazenamento</h2><p>Monitoramento das tabelas estruturadas do DebaPortal.</p></div></div>${storageAlert}${summary.storage.length ? `<ul class="metric-list">${summary.storage.map((row) => `<li><span>${escapeHtml(row.relation || row.table_name)}</span><strong>${escapeHtml(row.pretty_size || `${row.bytes || 0} bytes`)}</strong></li>`).join('')}</ul>` : '<p class="muted">Resumo indisponível.</p>'}</section>
@@ -925,6 +929,8 @@ root.addEventListener('click', async (event) => {
   if (action === 'commit-import') { await handleImport(); return; }
   if (action === 'sync-drive') { await handleDriveSync(); return; }
   if (action === 'sync-photos') { await handlePhotoSync(); return; }
+  if (action === 'start-onedrive-connection') { await handleStartOneDriveConnection(); return; }
+  if (action === 'complete-onedrive-connection') { await handleCompleteOneDriveConnection(); return; }
   if (action === 'export-sap-validation') { await handleSapValidationExport(); return; }
   const profileButton = event.target.closest('[data-profile-id]');
   if (profileButton) {
@@ -1227,6 +1233,36 @@ async function handleDriveSync() {
   } finally {
     state.busy = false;
     updateView();
+  }
+}
+
+async function handleStartOneDriveConnection() {
+  state.busy = true; updateView();
+  try {
+    state.oneDriveConnection = await api.startOneDriveConnection();
+    setToast('Código Microsoft gerado. Conclua a autorização e volte ao portal.', 'success');
+  } catch (error) {
+    setToast(error.message || 'Não foi possível iniciar a reconexão.', 'error');
+  } finally {
+    state.busy = false; updateView();
+  }
+}
+
+async function handleCompleteOneDriveConnection() {
+  if (!state.oneDriveConnection?.device_code) return;
+  state.busy = true; updateView();
+  try {
+    const result = await api.completeOneDriveConnection(state.oneDriveConnection.device_code);
+    if (result.pending) {
+      setToast('A Microsoft ainda aguarda a autorização. Conclua o login e tente novamente.', 'info');
+    } else {
+      state.oneDriveConnection = null;
+      setToast('OneDrive reconectado com segurança.', 'success');
+    }
+  } catch (error) {
+    setToast(error.message || 'Não foi possível confirmar a conexão.', 'error');
+  } finally {
+    state.busy = false; updateView();
   }
 }
 

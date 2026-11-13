@@ -277,6 +277,11 @@ tbody tr:last-child td { border-bottom: 0; }
 
 .admin-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .admin-sync-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.onedrive-connect { margin-top: 1rem; padding: 1rem; border: 1px solid #bfd0e1; border-radius: 14px; background: #f5f8fb; display: grid; gap: .7rem; }
+.onedrive-connect > span { color: var(--slate-500); font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+.onedrive-connect > strong { font-size: clamp(1.45rem, 7vw, 2.1rem); letter-spacing: .15em; color: var(--navy-900); overflow-wrap: anywhere; }
+.onedrive-connect > p { margin: 0; }
+.onedrive-connect .button { width: 100%; justify-content: center; }
 .admin-card { padding: 20px; }
 .admin-wide { grid-column: 1 / -1; }
 .admin-card > p { color: var(--slate-700); font-size: .84rem; }

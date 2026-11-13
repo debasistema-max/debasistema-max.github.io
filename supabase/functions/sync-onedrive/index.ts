@@ -12,9 +12,10 @@ type GraphItem = {
   "@microsoft.graph.downloadUrl"?: string;
 };
 type SyncRequest = {
-  action?: "dispatch" | "dispatch_photos" | "check" | "download";
+  action?: "dispatch" | "dispatch_photos" | "check" | "download" | "connect_start" | "connect_complete";
   job_id?: string;
   retry_failed?: boolean;
+  device_code?: string;
 };
 
 const GRAPH_ROOT = "https://graph.microsoft.com/v1.0/me/drive";
@@ -39,10 +40,20 @@ async function fetchWithRetry(url: string, init: RequestInit, attempts = 4): Pro
   return response as Response;
 }
 
+async function storedRefreshToken(): Promise<string> {
+  const admin = createClient(requiredEnv("SUPABASE_URL"), requiredEnv("SUPABASE_SERVICE_ROLE_KEY"), {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data } = await admin.rpc("backend_get_onedrive_refresh_token");
+  return String(data || Deno.env.get("MS_GRAPH_REFRESH_TOKEN") || "").trim();
+}
+
 async function microsoftToken(scope: string): Promise<string> {
+  const refreshToken = await storedRefreshToken();
+  if (!refreshToken) throw new Error("Conexao Microsoft ausente.");
   const body = new URLSearchParams({
     client_id: requiredEnv("MS_GRAPH_CLIENT_ID"),
-    refresh_token: requiredEnv("MS_GRAPH_REFRESH_TOKEN"),
+    refresh_token: refreshToken,
     scope,
     grant_type: "refresh_token",
   });
@@ -59,6 +70,52 @@ async function microsoftToken(scope: string): Promise<string> {
   const data = await response.json();
   if (!data.access_token) throw new Error("Microsoft nao retornou token de acesso.");
   return String(data.access_token);
+}
+
+async function startMicrosoftConnection(): Promise<Record<string, unknown>> {
+  const response = await fetchWithRetry("https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode?mkt=pt-BR", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: requiredEnv("MS_GRAPH_CLIENT_ID"),
+      scope: Deno.env.get("MS_GRAPH_SCOPE") || "offline_access Files.Read",
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.device_code || !data.user_code || data.verification_uri !== "https://microsoft.com/devicelogin") {
+    const code = String(data?.error || "unknown_error").replace(/[^a-z0-9_.-]/gi, "");
+    throw new Error(`Microsoft recusou a reconexao (${response.status}, ${code}).`);
+  }
+  return {
+    device_code: String(data.device_code), user_code: String(data.user_code),
+    verification_uri: String(data.verification_uri), expires_in: Number(data.expires_in || 900),
+  };
+}
+
+async function completeMicrosoftConnection(deviceCode: string): Promise<{ connected: boolean; pending?: boolean }> {
+  if (!deviceCode || deviceCode.length < 20 || deviceCode.length > 2048) throw new Error("Codigo de conexao invalido.");
+  const response = await fetchWithRetry("https://login.microsoftonline.com/consumers/oauth2/v2.0/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+      client_id: requiredEnv("MS_GRAPH_CLIENT_ID"), device_code: deviceCode,
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const code = String(data?.error || "unknown_error").replace(/[^a-z0-9_.-]/gi, "");
+    if (code === "authorization_pending" || code === "slow_down") return { connected: false, pending: true };
+    throw new Error(`Microsoft nao concluiu a conexao (${code}).`);
+  }
+  const refreshToken = String(data.refresh_token || "");
+  if (refreshToken.length < 40) throw new Error("Microsoft nao retornou autorizacao duradoura.");
+  const admin = createClient(requiredEnv("SUPABASE_URL"), requiredEnv("SUPABASE_SERVICE_ROLE_KEY"), {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { error } = await admin.rpc("backend_set_onedrive_refresh_token", { token_value: refreshToken });
+  if (error) throw new Error("Nao foi possivel guardar a conexao no cofre seguro.");
+  return { connected: true };
 }
 
 async function graphToken(): Promise<string> {
@@ -200,6 +257,10 @@ Deno.serve(async (req) => {
     }
 
     const { user } = await requireAdmin(req);
+    if (input.action === "connect_start") return jsonResponse(req, { data: await startMicrosoftConnection() });
+    if (input.action === "connect_complete") {
+      return jsonResponse(req, { data: await completeMicrosoftConnection(String(input.device_code || "")) });
+    }
     const photosOnly = input.action === "dispatch_photos";
 
     if (input.action !== "dispatch" && !photosOnly) {

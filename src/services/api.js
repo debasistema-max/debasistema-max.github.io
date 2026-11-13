@@ -393,6 +393,22 @@ class SupabaseApi {
     return data?.data || data;
   }
 
+  async startOneDriveConnection() {
+    const { data, error } = await this.client.functions.invoke('sync-onedrive', { body: { action: 'connect_start' } });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+    return data?.data || data;
+  }
+
+  async completeOneDriveConnection(deviceCode) {
+    const { data, error } = await this.client.functions.invoke('sync-onedrive', {
+      body: { action: 'connect_complete', device_code: deviceCode }
+    });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+    return data?.data || data;
+  }
+
   async getSyncJob(id = null) {
     const { data, error } = await this.client.rpc('get_sync_job', { sync_job_id: id });
     if (error) throw error;
