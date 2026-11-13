@@ -11,6 +11,17 @@ const demoProducts = [
   { id: 'p5', code: 'DP-4400', description: 'Coxim superior', applications: ['Hatch'], years: ['2015 a 2022'], category: 'Suspensão', product_line: 'Leve', brand: 'Marca B', price: 132, stock_pr: 8, stock_sp: 0, total_stock: 8 }
 ];
 
+async function invocationError(error) {
+  const response = error?.context;
+  if (response && typeof response.clone === 'function') {
+    try {
+      const payload = await response.clone().json();
+      if (payload?.error) return new Error(String(payload.error));
+    } catch {}
+  }
+  return error instanceof Error ? error : new Error('A função segura não respondeu corretamente.');
+}
+
 function normalizeProduct(row) {
   const nullableNumber = (value) => value === null || value === undefined || value === '' ? null : Number(value);
   return {
@@ -395,7 +406,7 @@ class SupabaseApi {
 
   async startOneDriveConnection() {
     const { data, error } = await this.client.functions.invoke('sync-onedrive', { body: { action: 'connect_start' } });
-    if (error) throw error;
+    if (error) throw await invocationError(error);
     if (data?.error) throw new Error(data.error);
     return data?.data || data;
   }
@@ -404,7 +415,7 @@ class SupabaseApi {
     const { data, error } = await this.client.functions.invoke('sync-onedrive', {
       body: { action: 'connect_complete', device_code: deviceCode }
     });
-    if (error) throw error;
+    if (error) throw await invocationError(error);
     if (data?.error) throw new Error(data.error);
     return data?.data || data;
   }

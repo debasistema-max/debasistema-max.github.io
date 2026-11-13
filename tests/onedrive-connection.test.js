@@ -14,6 +14,7 @@ describe('reconexão segura do OneDrive', () => {
   it('conclui device code no backend sem devolver tokens ao navegador', () => {
     const syncFunction = readFileSync(new URL('../supabase/functions/sync-onedrive/index.ts', import.meta.url), 'utf8');
     const main = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+    const api = readFileSync(new URL('../src/services/api.js', import.meta.url), 'utf8');
     assert.match(syncFunction, /connect_start/);
     assert.match(syncFunction, /connect_complete/);
     assert.match(syncFunction, /authorization_pending/);
@@ -21,5 +22,7 @@ describe('reconexão segura do OneDrive', () => {
     assert.doesNotMatch(main, /refresh_token/);
     assert.match(main, /Reconectar OneDrive/);
     assert.match(main, /Confirmar conexão/);
+    assert.match(api, /response\.clone\(\)\.json\(\)/);
+    assert.match(api, /throw await invocationError\(error\)/);
   });
 });
