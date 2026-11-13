@@ -177,7 +177,7 @@ async function hasServiceRole(req: Request): Promise<boolean> {
   return !error;
 }
 
-async function secureWorkbookDownload(req: Request, jobId: string, retryFailed: boolean): Promise<Response> {
+async function secureWorkbookDownload(req: Request, jobId: string): Promise<Response> {
   if (!(await hasServiceRole(req))) return jsonResponse(req, { error: "Acesso de backend obrigatorio." }, 403);
   if (!/^[0-9a-f-]{36}$/i.test(jobId)) return jsonResponse(req, { error: "Solicitacao invalida." }, 400);
 
@@ -197,12 +197,11 @@ async function secureWorkbookDownload(req: Request, jobId: string, retryFailed: 
   if ((item.size ?? 0) <= 0 || (item.size ?? 0) > 20_000_000) throw new Error("Arquivo fora do limite permitido.");
   if (Number(job.source_size) !== Number(item.size)
     || String(job.source_modified || "") !== String(item.lastModifiedDateTime || "")) {
-    if (!retryFailed) throw new Error("A planilha foi alterada depois da solicitacao. Solicite uma nova sincronizacao.");
     const { error: refreshError } = await admin.from("sync_jobs").update({
       source_size: item.size ?? null,
       source_modified: item.lastModifiedDateTime ?? null,
     }).eq("id", jobId);
-    if (refreshError) throw new Error("Nao foi possivel atualizar a referencia da planilha para repeticao.");
+    if (refreshError) throw new Error("Nao foi possivel atualizar a referencia da planilha.");
   }
 
   const downloadUrl = item["@microsoft.graph.downloadUrl"];
@@ -258,7 +257,7 @@ Deno.serve(async (req) => {
   try {
     const input = await req.json().catch(() => ({})) as SyncRequest;
     if (input.action === "download") {
-      return await secureWorkbookDownload(req, String(input.job_id || ""), input.retry_failed === true);
+      return await secureWorkbookDownload(req, String(input.job_id || ""));
     }
 
     const { user } = await requireAdmin(req);

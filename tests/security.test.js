@@ -116,7 +116,8 @@ describe('contratos de autorização', () => {
     assert.match(syncScript, /functions\/v1\/sync-onedrive/);
     assert.match(syncScript, /action: "download"/);
     assert.match(syncScript, /retry_failed: job\.status === "FALHOU"/);
-    assert.match(syncFunction, /if \(!retryFailed\) throw new Error/);
+    assert.doesNotMatch(syncFunction, /planilha foi alterada depois da solicitacao/);
+    assert.match(syncFunction, /source_modified: item\.lastModifiedDateTime \?\? null/);
     assert.doesNotMatch(syncScript, /job\.source_download_url/);
   });
 
