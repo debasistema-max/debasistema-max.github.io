@@ -5,10 +5,12 @@ import { integer, safeFileName, stockLevel } from '../src/lib/utils.js';
 describe('regras de apresentação', () => {
   it('aplica exatamente as três faixas de estoque', () => {
     assert.equal(stockLevel(51).key, 'high');
-    assert.equal(stockLevel(50).key, 'low');
+    assert.equal(stockLevel(50).key, 'high');
+    assert.equal(stockLevel(49).key, 'low');
     assert.equal(stockLevel(1).key, 'low');
     assert.equal(stockLevel(1).label, 'Confirmar');
-    assert.equal(stockLevel(50).label, 'Confirmar');
+    assert.equal(stockLevel(49).label, 'Confirmar');
+    assert.equal(stockLevel(50).label, 'Disponível');
     assert.equal(stockLevel(51).label, 'Disponível');
     assert.equal(stockLevel(0).key, 'none');
     assert.equal(stockLevel(0).label, 'Indisponível');
