@@ -19,6 +19,8 @@ describe('reconexão segura do OneDrive', () => {
     assert.match(syncFunction, /connect_complete/);
     assert.match(syncFunction, /authorization_pending/);
     assert.match(syncFunction, /backend_set_onedrive_refresh_token/);
+    assert.match(syncFunction, /\["microsoft\.com", "www\.microsoft\.com"\]/);
+    assert.match(syncFunction, /\["\/devicelogin", "\/link"\]/);
     assert.doesNotMatch(main, /refresh_token/);
     assert.match(main, /Reconectar OneDrive/);
     assert.match(main, /Confirmar conexão/);

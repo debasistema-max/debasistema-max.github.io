@@ -82,7 +82,12 @@ async function startMicrosoftConnection(): Promise<Record<string, unknown>> {
     }),
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok || !data.device_code || !data.user_code || data.verification_uri !== "https://microsoft.com/devicelogin") {
+  let verificationUri: URL | null = null;
+  try { verificationUri = new URL(String(data.verification_uri || "")); } catch { verificationUri = null; }
+  const allowedVerificationUri = verificationUri?.protocol === "https:"
+    && ["microsoft.com", "www.microsoft.com"].includes(verificationUri.hostname)
+    && ["/devicelogin", "/link"].includes(verificationUri.pathname.replace(/\/$/, ""));
+  if (!response.ok || !data.device_code || !data.user_code || !allowedVerificationUri) {
     const code = String(data?.error || "unknown_error").replace(/[^a-z0-9_.-]/gi, "");
     throw new Error(`Microsoft recusou a reconexao (${response.status}, ${code}).`);
   }
