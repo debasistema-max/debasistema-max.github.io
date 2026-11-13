@@ -116,11 +116,14 @@ export function buildSapValidationWorkbook({ items, context = {} }) {
     'Diferença SP', 'Status', 'Observações'
   ];
   const tableLabel = [context.tableCode, context.tableName].filter(Boolean).join(' · ') || '—';
+  const sampleDescription = context.sampleByLine && typeof context.sampleByLine === 'object'
+    ? Object.entries(context.sampleByLine).filter(([, quantity]) => Number(quantity) > 0).map(([line, quantity]) => `${line}: ${quantity}`).join(' · ')
+    : `${context.sampleSize || 5} itens por linha`;
   const headerRow = 7;
   const firstDataRow = headerRow + 1;
   const values = [
     ['DebaPortal · Conferência manual SAP'],
-    [`Amostra aleatória de ${context.sampleSize || 5} itens por linha`],
+    [`Amostra aleatória por linha · ${sampleDescription}`],
     ['Destino', context.destinationState || '—', 'Origem', context.originCode || '—', 'Tabela', tableLabel],
     ['Gerada em', context.generatedAt || new Date().toLocaleString('pt-BR'), 'Dados atualizados em', context.updatedAt || '—'],
     ['Responsável', '', 'Conferido em', ''],

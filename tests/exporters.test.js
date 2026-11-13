@@ -89,7 +89,7 @@ test('planilha de conferência destaca entradas manuais e calcula divergências'
       validation_line: 'Leve', code: 'ABC-1', description: 'Produto', price: 110,
       stock_pr: 8, stock_sp: 3
     }],
-    context: { destinationState: 'PR', originCode: 'PR', tableCode: 'PR-PR', sampleSize: 5 }
+    context: { destinationState: 'PR', originCode: 'PR', tableCode: 'PR-PR', sampleByLine: { Leve: 3, Pesada: 5, Utilitário: 7 } }
   });
   const sheet = workbook.Sheets['Conferência SAP'];
   const summary = workbook.Sheets.Resumo;
@@ -108,6 +108,9 @@ test('planilha de conferência destaca entradas manuais e calcula divergências'
   assert.match(sheet.O8.f, /DIVERGENTE/);
   assert.equal(sheet.F8.s.fill.fgColor.rgb, 'FFF2CC');
   assert.equal(sheet.B5.s.fill.fgColor.rgb, 'FFF2CC');
+  assert.match(sheet.A2.v, /Leve: 3/);
+  assert.match(sheet.A2.v, /Pesada: 5/);
+  assert.match(sheet.A2.v, /Utilitário: 7/);
   assert.match(summary.B8.f, /COUNTIF/);
   assert.match(summary.C17.f, /COUNTIFS/);
   assert.deepEqual(workbook.SheetNames, ['Resumo', 'Conferência SAP']);
