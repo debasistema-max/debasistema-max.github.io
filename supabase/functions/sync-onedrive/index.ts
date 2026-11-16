@@ -307,10 +307,14 @@ async function createWorkbookBackup(token: string, target: { item: GraphItem; fo
   const monitor = new URL(location);
   const allowedMonitor = monitor.protocol === "https:" && (
     monitor.hostname === "api.onedrive.com" || monitor.hostname === "onedrive.com"
+      || monitor.hostname === "my.microsoftpersonalcontent.com"
       || monitor.hostname.endsWith(".sharepoint.com")
       || monitor.hostname.endsWith(".onedrive.com") || monitor.hostname.endsWith(".1drv.com")
   ) && (/\/monitor\//i.test(monitor.pathname) || /\/_api\/v2\.[01]\/monitor\//i.test(monitor.pathname));
-  if (!allowedMonitor) throw new Error("Destino de acompanhamento do backup nao autorizado.");
+  if (!allowedMonitor) {
+    const monitorHost = monitor.hostname.replace(/[^a-z0-9.-]/gi, "");
+    throw new Error(`Destino de acompanhamento do backup nao autorizado (${monitorHost}).`);
+  }
   for (let attempt = 0; attempt < 24; attempt += 1) {
     const statusResponse = await fetchWithRetry(monitor.toString(), {
       cache: "no-store", headers: { Accept: "application/json" },
