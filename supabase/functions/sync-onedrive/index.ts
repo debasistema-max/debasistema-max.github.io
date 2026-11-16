@@ -24,6 +24,7 @@ type MatrixPatchRow = {
   applicationValues?: string[];
   yearProvided?: boolean;
   yearValues?: string[];
+  base_price?: number;
 };
 type SyncRequest = {
   action?: "dispatch" | "dispatch_photos" | "check" | "download" | "connect_start" | "connect_complete" | "patch_matrix";
@@ -209,6 +210,7 @@ const MATRIX_FIELDS: Record<string, { label: string; aliases: string[] }> = {
   synonyms: { label: "Sinonimos", aliases: ["sinonimos", "synonyms", "similares", "similar", "oem"] },
   application: { label: "Aplicacao", aliases: ["aplicacao", "applications", "application", "aplicacoes", "aplicacao_veiculo", "veiculo", "modelo"] },
   year: { label: "Ano", aliases: ["ano", "year", "anos"] },
+  base_price: { label: "Preco base", aliases: ["preco_s_imp", "preco_sem_imposto", "preco_base", "valor_base", "base_price"] },
 };
 const CODE_HEADERS = ["codigo", "code", "codigo_produto", "sku", "item"];
 
@@ -253,6 +255,11 @@ function sanitizeMatrixRows(rows: MatrixPatchRow[] | undefined): MatrixPatchRow[
       sanitized.yearProvided = true;
       sanitized.yearValues = listText(row.yearValues || [], "Ano").split("; ").filter(Boolean);
     }
+    if (Object.hasOwn(row, "base_price")) {
+      const price = Number(row.base_price);
+      if (!Number.isFinite(price) || price <= 0 || price > 10_000_000) throw new Error(`Preco base invalido para o codigo ${code}.`);
+      sanitized.base_price = Math.round(price * 100) / 100;
+    }
     const hasChange = Object.keys(sanitized).some((key) => key !== "code" && !key.endsWith("Provided") && key !== "applicationClear");
     if (!hasChange) throw new Error(`Nenhum campo informado para o codigo ${code}.`);
     return sanitized;
@@ -270,14 +277,15 @@ function excelColumn(index: number): string {
   return result;
 }
 
-function matrixFieldValues(row: MatrixPatchRow): Record<string, string> {
-  const values: Record<string, string> = {};
+function matrixFieldValues(row: MatrixPatchRow): Record<string, string | number> {
+  const values: Record<string, string | number> = {};
   for (const field of ["description", "category", "product_line", "commercial_line"] as const) {
     if (Object.hasOwn(row, field)) values[field] = row[field] === null ? "" : String(row[field]);
   }
   if (Object.hasOwn(row, "synonyms")) values.synonyms = (row.synonyms || []).join("; ");
   if (row.applicationProvided) values.application = row.applicationClear ? "" : (row.applicationValues || []).join("; ");
   if (row.yearProvided) values.year = (row.yearValues || []).join("; ");
+  if (Object.hasOwn(row, "base_price")) values.base_price = Number(row.base_price);
   return values;
 }
 
@@ -356,7 +364,7 @@ async function patchMatrixWorkbook(rows: MatrixPatchRow[]): Promise<Record<strin
       });
       const firstColumn = Math.min(...targetCells.map((cell) => cell.column));
       const lastColumn = Math.max(...targetCells.map((cell) => cell.column));
-      const rowValues: (string | null)[] = Array(lastColumn - firstColumn + 1).fill(null);
+      const rowValues: (string | number | null)[] = Array(lastColumn - firstColumn + 1).fill(null);
       for (const cell of targetCells) rowValues[cell.column - firstColumn] = cell.value;
       const excelRow = baseRow + rowOffset + 1;
       const address = `${excelColumn(baseColumn + firstColumn)}${excelRow}:${excelColumn(baseColumn + lastColumn)}${excelRow}`;

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as XLSX from 'xlsx';
 import { parseMatrixPatchFile } from '../src/lib/importer.js';
-import { parseMatrixPatchRecords, prepareMatrixPatch } from '../src/lib/matrix-patch.js';
+import { parseMatrixPatchRecords, parsePriceList02Matrix, prepareMatrixPatch } from '../src/lib/matrix-patch.js';
 
 test('lê um arquivo Excel contendo somente os itens alterados', async () => {
   const workbook = XLSX.utils.book_new();
@@ -58,4 +58,29 @@ test('rejeita código duplicado na planilha parcial', () => {
     { Código: 'A1', Descrição: 'Um' },
     { Código: 'A1', Descrição: 'Dois' }
   ]), /duplicado/);
+});
+
+test('lê somente código e PRC.LIST 02 do relatório de preços', () => {
+  const parsed = parsePriceList02Matrix([
+    ['Observação', 'DESCONTO MAX. 5%'],
+    [],
+    ['#', 'Cód.', 'ITEM', 'MARK', 'MODEL', 'YEARS', 'NCM', 'IPI %', 'PRC.LIST 01', 'PRC.LIST 02'],
+    [1, 7175526020, 'CAIXA DIR.HID.', 'TOYOTA', 'HILUX', "05-15", '8708.94.83', '3,25%', '648,50', '628,00'],
+    ['BR260103'],
+    ['#', 'Cód.', 'ITEM', 'MARK', 'MODEL', 'YEARS', 'NCM', 'IPI %', 'PRC.LIST 01', 'PRC.LIST 02'],
+    [1, 7175526030, 'CAIXA DIR.HID.', 'TOYOTA', 'HILUX', "16-", '8708.94.83', '3,25%', '779,60', '755,00']
+  ]);
+  assert.deepEqual(parsed.rows, [
+    { code: '7175526020', base_price: 628 },
+    { code: '7175526030', base_price: 755 }
+  ]);
+});
+
+test('marca preço da LISTA 02 como atualização do preço base', () => {
+  const result = prepareMatrixPatch([{ code: 'A1', base_price: 125.04 }], [{
+    code: 'A1', description: 'Produto A', category: 'Direção', commercial_line: 'Leve', product_line: 'Marca A', synonyms: [], applications: []
+  }]);
+  assert.equal(result.hasBasePrice, true);
+  assert.equal(result.mergedRows[0].base_price, 125.04);
+  assert.equal(result.changes[0].field, 'Preço base');
 });
