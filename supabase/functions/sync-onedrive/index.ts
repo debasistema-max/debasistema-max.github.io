@@ -212,7 +212,7 @@ const MATRIX_FIELDS: Record<string, { label: string; aliases: string[] }> = {
   year: { label: "Ano", aliases: ["ano", "year", "anos"] },
   base_price: { label: "Preco base", aliases: ["preco_s_imp", "preco_sem_imposto", "preco_base", "valor_base", "base_price"] },
 };
-const CODE_HEADERS = ["codigo", "code", "codigo_produto", "sku", "item"];
+const CODE_HEADERS = ["codigo", "codigo_ips", "cod_ips", "code", "codigo_produto", "sku", "item"];
 
 function normalizeHeader(value: unknown): string {
   return String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")

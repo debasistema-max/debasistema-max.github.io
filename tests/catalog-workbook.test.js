@@ -59,7 +59,7 @@ test("aplica a regra fiscal por rota comercial", () => {
   };
 
   addSheet("MATRIZ", [
-    ["CODIGO", "DESCRICAO", "PRECO S/IMP", "IPI"],
+    ["CODIGO IPS", "DESCRICAO", "PRECO S/IMP", "IPI"],
     ["ABC-1", "Produto de teste", 100, "10%"],
   ]);
   for (const [route, importedTotal] of [["PR-PR", 130], ["SP-SP", 140], ["PR-SC", 120]]) {

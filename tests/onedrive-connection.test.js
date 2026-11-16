@@ -35,6 +35,7 @@ describe('reconexão segura do OneDrive', () => {
     assert.match(syncFunction, /offline_access Files\.ReadWrite/);
     assert.match(syncFunction, /input\.action === "patch_matrix"/);
     assert.match(syncFunction, /rows\.length > 200/);
+    assert.match(syncFunction, /"codigo_ips"/);
     assert.match(syncFunction, /requiredEnv\("ONEDRIVE_FOLDER_PATH"\)/);
     assert.match(syncFunction, /requiredEnv\("ONEDRIVE_WORKBOOK_NAME"\)/);
     assert.match(syncFunction, /const backupName = await createWorkbookBackup\(token, target\)/);

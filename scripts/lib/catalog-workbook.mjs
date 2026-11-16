@@ -128,14 +128,19 @@ function sheetMatrix(XLSX, bytes, sheetName, required = true) {
   });
 }
 
-function findHeader(rows, required, sheetName) {
+function findHeader(rows, required, sheetName, aliases = {}) {
   for (let rowIndex = 0; rowIndex < Math.min(rows.length, 40); rowIndex += 1) {
     const keys = rows[rowIndex].map(headerKey);
-    if (!required.every((name) => keys.includes(name))) continue;
+    const requiredColumns = required.map((name) => {
+      const candidates = [name, ...(aliases[name] || [])];
+      return candidates.map((candidate) => keys.indexOf(candidate)).find((index) => index >= 0) ?? -1;
+    });
+    if (requiredColumns.some((index) => index < 0)) continue;
     const columns = new Map();
     keys.forEach((name, index) => {
       if (name && !columns.has(name)) columns.set(name, index);
     });
+    required.forEach((name, index) => columns.set(name, requiredColumns[index]));
     return { rowIndex, columns };
   }
   throw new Error(`${sheetName}: cabecalho obrigatorio nao encontrado (${required.join(", ")}).`);
@@ -208,7 +213,9 @@ export function parsePortalWorkbook(XLSX, bytes, name, maxRows = 50_000) {
 
   {
     const matrix = sheetMatrix(XLSX, bytes, "MATRIZ");
-    const matrixHeader = findHeader(matrix, ["codigo", "descricao", "preco s imp"], "MATRIZ");
+    const matrixHeader = findHeader(matrix, ["codigo", "descricao", "preco s imp"], "MATRIZ", {
+      codigo: ["codigo ips", "cod ips"],
+    });
     for (const row of matrix.slice(matrixHeader.rowIndex + 1)) {
       const code = productCode(valueAt(row, matrixHeader.columns, "codigo"));
       if (!code) continue;
