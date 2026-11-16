@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as XLSX from 'xlsx';
 import { parseMatrixPatchFile } from '../src/lib/importer.js';
-import { parseMatrixPatchRecords, parsePriceList02Matrix, prepareMatrixPatch } from '../src/lib/matrix-patch.js';
+import { parseMatrixPatchRecords, parsePriceList02Clipboard, parsePriceList02Matrix, prepareMatrixPatch } from '../src/lib/matrix-patch.js';
 
 test('lê um arquivo Excel contendo somente os itens alterados', async () => {
   const workbook = XLSX.utils.book_new();
@@ -66,7 +66,7 @@ test('lê somente código e PRC.LIST 02 do relatório de preços', () => {
     [],
     ['#', 'Cód.', 'ITEM', 'MARK', 'MODEL', 'YEARS', 'NCM', 'IPI %', 'PRC.LIST 01', 'PRC.LIST 02'],
     [1, 7175526020, 'CAIXA DIR.HID.', 'TOYOTA', 'HILUX', "05-15", '8708.94.83', '3,25%', '648,50', '628,00'],
-    ['BR260103'],
+    ['', 'BR260103', '', '', '', '', '', '', '1', '2'],
     ['#', 'Cód.', 'ITEM', 'MARK', 'MODEL', 'YEARS', 'NCM', 'IPI %', 'PRC.LIST 01', 'PRC.LIST 02'],
     [1, 7175526030, 'CAIXA DIR.HID.', 'TOYOTA', 'HILUX', "16-", '8708.94.83', '3,25%', '779,60', '755,00']
   ]);
@@ -83,4 +83,23 @@ test('marca preço da LISTA 02 como atualização do preço base', () => {
   assert.equal(result.hasBasePrice, true);
   assert.equal(result.mergedRows[0].base_price, 125.04);
   assert.equal(result.changes[0].field, 'Preço base');
+});
+
+test('aceita copiar e colar duas colunas diretamente do Excel', () => {
+  const parsed = parsePriceList02Clipboard('Código\tPRC.LIST 02\r\n7175526020\t628,00\r\n7175526030\t755,00');
+  assert.deepEqual(parsed.rows, [
+    { code: '7175526020', base_price: 628 },
+    { code: '7175526030', base_price: 755 }
+  ]);
+});
+
+test('aceita colar a tabela completa com cabeçalhos repetidos', () => {
+  const parsed = parsePriceList02Clipboard([
+    '#\tCód.\tITEM\tMARK\tPRC.LIST 01\tPRC.LIST 02',
+    '1\t7175526020\tCAIXA DIR.HID.\tTOYOTA\t648,50\t628,00',
+    '#\tCód.\tITEM\tMARK\tPRC.LIST 01\tPRC.LIST 02',
+    '1\t7175526030\tCAIXA DIR.HID.\tTOYOTA\t779,60\t755,00'
+  ].join('\n'));
+  assert.equal(parsed.rows.length, 2);
+  assert.equal(parsed.rows[1].base_price, 755);
 });

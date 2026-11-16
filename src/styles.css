@@ -337,6 +337,12 @@ tbody tr:last-child td { border-bottom: 0; }
 .matrix-patch-card { align-content: start; }
 .matrix-patch-guidance { display: grid; gap: 4px; margin: 2px 0 14px; padding: 12px 14px; border-radius: 10px; background: var(--slate-100); color: var(--slate-700); font-size: .76rem; }
 .matrix-patch-guidance strong { color: var(--navy-900); }
+.matrix-patch-inputs { display: grid; grid-template-columns: minmax(220px, .8fr) minmax(320px, 1.2fr); gap: 12px; }
+.matrix-patch-source { display: grid; align-content: start; gap: 7px; padding: 14px; border: 1px solid var(--slate-200); border-radius: 12px; background: var(--slate-50); }
+.matrix-patch-source strong { color: var(--navy-900); font-size: .84rem; }
+.matrix-patch-source span { color: var(--slate-500); font-size: .72rem; }
+.matrix-patch-source textarea { min-height: 118px; resize: vertical; font: 500 .72rem/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.matrix-patch-source .button { justify-self: start; }
 .matrix-patch-preview { display: grid; gap: 12px; margin-top: 16px; }
 .matrix-patch-summary { display: flex; flex-wrap: wrap; gap: 8px; }
 .matrix-patch-summary span { display: inline-flex; gap: 5px; padding: 7px 10px; border: 1px solid var(--slate-200); border-radius: 999px; color: var(--slate-600); font-size: .72rem; }
@@ -443,6 +449,7 @@ tbody tr:last-child td { border-bottom: 0; }
   .products-panel .product-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .admin-grid { grid-template-columns: 1fr; }
   .admin-wide { grid-column: 1; }
+  .matrix-patch-inputs { grid-template-columns: 1fr; }
   .compact-form { grid-template-columns: 1fr; }
   .invite-user-form .button { grid-column: 1; }
   .admin-product-search { grid-template-columns: 1fr 160px; }

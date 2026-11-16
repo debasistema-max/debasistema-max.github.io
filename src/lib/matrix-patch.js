@@ -68,10 +68,12 @@ export function parsePriceList02Matrix(matrix) {
       if (codeIndex < 0 && itemIndex > 0) codeIndex = itemIndex - 1;
       if (codeIndex < 0) codeIndex = itemIndex;
       if (codeIndex < 0) throw new Error('Não foi possível localizar a coluna de código antes de ITEM.');
-      columns = { codeIndex, priceIndex };
+      columns = { codeIndex, priceIndex, itemIndex };
       continue;
     }
     if (!columns) continue;
+    if (columns.itemIndex >= 0 && columns.itemIndex !== columns.codeIndex
+      && String(row[columns.itemIndex] ?? '').trim() === '') continue;
     const rawCode = row[columns.codeIndex];
     const rawPrice = row[columns.priceIndex];
     if (rawCode === null || rawCode === undefined || String(rawCode).trim() === '') continue;
@@ -87,6 +89,36 @@ export function parsePriceList02Matrix(matrix) {
   }
   if (!foundHeader) return null;
   if (!rows.length) throw new Error('Nenhum código com preço foi encontrado na PRC.LIST 02.');
+  return { rows, fields: [{ key: 'base_price', label: 'Preço base (PRC.LIST 02)' }] };
+}
+
+export function parsePriceList02Clipboard(text) {
+  const value = String(text || '').trim();
+  if (!value) throw new Error('Cole os códigos e preços copiados do Excel.');
+  if (value.length > 250_000) throw new Error('Os dados colados excedem o limite permitido.');
+  const matrix = value.split(/\r?\n/).map((line) => line.split('\t'));
+  const report = parsePriceList02Matrix(matrix);
+  if (report) {
+    if (report.rows.length > 200) throw new Error('A atualização parcial aceita até 200 itens por vez.');
+    return report;
+  }
+  const rows = [];
+  const seenCodes = new Set();
+  for (const line of matrix) {
+    if (line.length < 2) continue;
+    const first = normalizeHeader(line[0]);
+    const second = normalizeHeader(line[1]);
+    if (/^(?:codigo|cod|item)$/.test(first) && /preco|price|prc|lista/.test(second)) continue;
+    const code = normalizeCompare(line[0]).replace(/\.0+$/, '');
+    const basePrice = priceValue(line[1]);
+    if (!code && basePrice === null) continue;
+    if (!code || basePrice === null || basePrice <= 0) throw new Error(`Código ou preço inválido na linha ${rows.length + 1}.`);
+    if (seenCodes.has(code)) throw new Error(`Código duplicado nos dados colados: ${code}.`);
+    seenCodes.add(code);
+    rows.push({ code, base_price: basePrice });
+  }
+  if (!rows.length) throw new Error('Nenhum código com preço foi encontrado nos dados colados.');
+  if (rows.length > 200) throw new Error('A atualização parcial aceita até 200 itens por vez.');
   return { rows, fields: [{ key: 'base_price', label: 'Preço base (PRC.LIST 02)' }] };
 }
 
