@@ -251,7 +251,7 @@ svg { display: block; width: 22px; height: 22px; }
 .stock-legend small { color: var(--slate-500); font-size: .62rem; font-weight: 650; }
 .branch-stock { min-width: 38px; font-size: .78rem; }
 .branch-stock strong { color: var(--slate-700); font-weight: 700; }
-.commercial-list-table { min-width: 960px; }
+.commercial-list-table { min-width: 1260px; }
 .commercial-list-table th { background: var(--slate-100); color: var(--navy-800); }
 .commercial-list-table th:first-child { border-top-left-radius: 9px; }
 .commercial-list-table th:last-child { border-top-right-radius: 9px; }

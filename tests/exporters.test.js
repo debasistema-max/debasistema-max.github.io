@@ -5,10 +5,10 @@ import { buildExcelWorkbook, buildPdfDocument, buildSapValidationQuoteWorkbook, 
 const payload = {
   title: 'Lista comercial - completa',
   variant: 'commercial-list',
-  context: { destinationState: 'PR', originCode: 'PR', lines: ['Leve', 'Pesada', 'Utilitário'] },
+  context: { destinationState: 'SC', originCode: 'PR', routeCode: 'PR-SC', lines: ['Leve', 'Pesada', 'Utilitário'] },
   items: [{
-    code: 'ABC-1', description: 'Produto', applications: ['Veículo / Modelo', ' veículo   / modelo '], years: ['2018/...', '2018/...'],
-    price: 110, stock_pr: 8, stock_sp: 3, stock_origin: 8, updated_at: '2026-11-12T12:00:00Z'
+    code: 'ABC-1', description: 'Produto', brand: 'Marca A', applications: ['Veículo / Modelo', ' veículo   / modelo '], years: ['2018/...', '2018/...'],
+    base_price: 100, price: 110, stock_pr: 8, stock_sp: 3, stock_origin: 8, updated_at: '2026-11-12T12:00:00Z'
   }]
 };
 
@@ -20,23 +20,28 @@ test('lista comercial separa aplicação e ano e omite atualização', () => {
   assert.equal(commercialRows([...payload.items, { ...payload.items[0] }]).length, 1);
 
   const workbook = buildExcelWorkbook(payload);
-  const sheet = workbook.Sheets['Lista comercial'];
-  assert.deepEqual(['A5', 'B5', 'C5', 'D5', 'E5', 'F5', 'G5', 'H5'].map((cell) => sheet[cell].v), [
-    'Código', 'Descrição', 'Aplicação', 'Ano', 'Preço', 'Estoque PR', 'Estoque SP', 'Disponibilidade'
+  const sheet = workbook.Sheets['LISTA PR-SC'];
+  assert.equal(sheet.A1.v, 'LISTA PR-SC');
+  assert.deepEqual(['A2', 'B2', 'C2', 'D2', 'E2', 'F2', 'G2', 'H2', 'I2'].map((cell) => sheet[cell].v), [
+    'Código IPS', 'Descrição', 'Marca', 'Aplicação', 'Ano', 'Preço s/ impostos', 'Preço c/ impostos', 'Estoque', 'Quantidade'
   ]);
+  assert.equal(sheet.F3.v, 100);
+  assert.equal(sheet.G3.v, 110);
+  assert.equal(sheet.H3.v, 'CONFIRMAR');
+  assert.equal(sheet.I3.v, '8');
   assert.equal(Object.values(sheet).some((cell) => cell?.v === 'Atualização'), false);
 });
 
 test('lista comercial exibe +50 quando o estoque atualizado atinge o limite', () => {
   const item = { ...payload.items[0], stock_pr: 50, stock_sp: 49, stock_origin: 50 };
   const [row] = commercialRows([item]);
-  assert.equal(row['Estoque PR'], '+50');
-  assert.equal(row['Estoque SP'], '49');
+  assert.equal(row.Estoque, 'DISPONÍVEL');
+  assert.equal(row.Quantidade, '+50');
 
   const workbook = buildExcelWorkbook({ ...payload, items: [item] });
-  const sheet = workbook.Sheets['Lista comercial'];
-  assert.equal(sheet.F6.v, '+50');
-  assert.equal(sheet.G6.v, '49');
+  const sheet = workbook.Sheets['LISTA PR-SC'];
+  assert.equal(sheet.H3.v, 'DISPONÍVEL');
+  assert.equal(sheet.I3.v, '+50');
 });
 
 test('lista comercial remove ano e grafias repetidas da aplicação', () => {

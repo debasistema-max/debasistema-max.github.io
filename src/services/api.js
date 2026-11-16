@@ -4,11 +4,11 @@ import { encodeFilterSelection, matchesFilterSelection } from '../lib/catalog-fi
 import { uniqueTextValues, uuid } from '../lib/utils.js';
 
 const demoProducts = [
-  { id: 'p1', code: 'DP-1001', description: 'Amortecedor dianteiro', applications: ['Veículo compacto'], years: ['2018 a 2024'], category: 'Suspensão', product_line: 'Leve', brand: 'Marca A', price: 289.9, stock_pr: 86, stock_sp: 42, total_stock: 128 },
-  { id: 'p2', code: 'DP-1020', description: 'Kit de suspensão traseira', applications: ['Utilitário leve'], years: ['2019 a 2025'], category: 'Suspensão', product_line: 'Utilitário', brand: 'Marca B', price: 419.5, stock_pr: 12, stock_sp: 4, total_stock: 16 },
-  { id: 'p3', code: 'DP-2044', description: 'Terminal de direção', applications: ['Sedã médio'], years: ['2016 a 2023'], category: 'Direção', product_line: 'Leve', brand: 'Marca C', price: 98.75, stock_pr: 0, stock_sp: 0, total_stock: 0 },
-  { id: 'p4', code: 'DP-3108', description: 'Bieleta estabilizadora', applications: ['Caminhão'], years: ['2020 a 2026'], category: 'Suspensão', product_line: 'Pesada', brand: 'Marca A', price: 74.2, stock_pr: 31, stock_sp: 55, total_stock: 86 },
-  { id: 'p5', code: 'DP-4400', description: 'Coxim superior', applications: ['Hatch'], years: ['2015 a 2022'], category: 'Suspensão', product_line: 'Leve', brand: 'Marca B', price: 132, stock_pr: 8, stock_sp: 0, total_stock: 8 }
+  { id: 'p1', code: 'DP-1001', description: 'Amortecedor dianteiro', applications: ['Veículo compacto'], years: ['2018 a 2024'], category: 'Suspensão', product_line: 'Leve', brand: 'Marca A', base_price: 263.55, price: 289.9, stock_pr: 86, stock_sp: 42, total_stock: 128 },
+  { id: 'p2', code: 'DP-1020', description: 'Kit de suspensão traseira', applications: ['Utilitário leve'], years: ['2019 a 2025'], category: 'Suspensão', product_line: 'Utilitário', brand: 'Marca B', base_price: 381.36, price: 419.5, stock_pr: 12, stock_sp: 4, total_stock: 16 },
+  { id: 'p3', code: 'DP-2044', description: 'Terminal de direção', applications: ['Sedã médio'], years: ['2016 a 2023'], category: 'Direção', product_line: 'Leve', brand: 'Marca C', base_price: 89.77, price: 98.75, stock_pr: 0, stock_sp: 0, total_stock: 0 },
+  { id: 'p4', code: 'DP-3108', description: 'Bieleta estabilizadora', applications: ['Caminhão'], years: ['2020 a 2026'], category: 'Suspensão', product_line: 'Pesada', brand: 'Marca A', base_price: 67.45, price: 74.2, stock_pr: 31, stock_sp: 55, total_stock: 86 },
+  { id: 'p5', code: 'DP-4400', description: 'Coxim superior', applications: ['Hatch'], years: ['2015 a 2022'], category: 'Suspensão', product_line: 'Leve', brand: 'Marca B', base_price: 120, price: 132, stock_pr: 8, stock_sp: 0, total_stock: 8 }
 ];
 
 async function invocationError(error) {
@@ -33,6 +33,7 @@ function normalizeProduct(row) {
     category: row.category || row.categoria || '',
     product_line: row.commercial_line ?? row.product_line ?? row.linha ?? '',
     brand: row.brand ?? row.marca ?? (row.commercial_line !== undefined ? row.product_line : ''),
+    base_price: nullableNumber(row.base_price ?? row.preco_base ?? row.preco_sem_impostos),
     price: nullableNumber(row.price ?? row.preco),
     stock_pr: nullableNumber(row.stock_pr ?? row.estoque_pr),
     stock_sp: nullableNumber(row.stock_sp ?? row.estoque_sp),
@@ -135,7 +136,7 @@ class SupabaseApi {
   }
 
   async searchProducts(params) {
-    const { data, error } = await this.client.rpc('search_catalog', {
+    let { data, error } = await this.client.rpc('search_catalog_commercial', {
       search_text: params.query || null,
       destination_state: params.destinationState || null,
       origin_code: params.originCode || null,
@@ -147,6 +148,20 @@ class SupabaseApi {
       page_number: params.page || 1,
       page_size: params.pageSize || 20
     });
+    if (error && /search_catalog_commercial|PGRST202|schema cache/i.test(`${error.code || ''} ${error.message || ''}`)) {
+      ({ data, error } = await this.client.rpc('search_catalog', {
+        search_text: params.query || null,
+        destination_state: params.destinationState || null,
+        origin_code: params.originCode || null,
+        price_table_id: params.priceTableId || null,
+        category_filter: encodeFilterSelection(params.category),
+        line_filter: encodeFilterSelection(params.line),
+        brand_filter: encodeFilterSelection(params.brand),
+        in_stock_only: Boolean(params.inStockOnly),
+        page_number: params.page || 1,
+        page_size: params.pageSize || 20
+      }));
+    }
     if (error) throw error;
     const rows = Array.isArray(data) ? data : (data?.items || []);
     return { items: rows.map(normalizeProduct), total: Number(data?.total ?? rows[0]?.total_count ?? rows.length) };

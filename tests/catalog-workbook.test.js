@@ -85,12 +85,19 @@ test("aplica a regra fiscal por rota comercial", () => {
   const { datasets } = parsePortalWorkbook(XLSX, bytes, "teste.xlsx");
   const priceRows = datasets.find((dataset) => dataset.kind === "PRECOS").rows;
   const prices = Object.fromEntries(priceRows.map((row) => [row.price_table_code, row.price]));
+  const basePrices = Object.fromEntries(priceRows.map((row) => [row.price_table_code, row.base_price]));
 
   assert.deepEqual(prices, {
     "PR-PR": 130,
     "SP-SP": 110,
     "PR-SC": 110,
     "PR-SP": 110,
+  });
+  assert.deepEqual(basePrices, {
+    "PR-PR": 100,
+    "SP-SP": 100,
+    "PR-SC": 100,
+    "PR-SP": 100,
   });
 });
 

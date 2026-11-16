@@ -302,9 +302,9 @@ export function parsePortalWorkbook(XLSX, bytes, name, maxRows = 50_000) {
       const price = route === "PR-PR"
         ? fiscal?.final ?? finiteNumber(valueAt(row, header.columns, "preco c impostos"))
         : basePlusIpi(base, fiscal?.ipi ?? null, product.ipiRate);
-      if (price !== null && price > 0) prices.push({ code, price, price_table_code: route });
+      if (price !== null && price > 0) prices.push({ code, base_price: base, price, price_table_code: route });
       if (route === "PR-SC" && price !== null && price > 0) {
-        prices.push({ code, price, price_table_code: "PR-SP" });
+        prices.push({ code, base_price: base, price, price_table_code: "PR-SP" });
       }
     }
   }
@@ -341,7 +341,7 @@ export function parsePortalWorkbook(XLSX, bytes, name, maxRows = 50_000) {
   for (const row of prices.filter((candidate) => validCodes.has(String(candidate.code)))) {
     const key = `${row.price_table_code}|${row.code}`;
     const existing = priceByProductAndTable.get(key);
-    if (existing && existing.price !== row.price) {
+    if (existing && (existing.price !== row.price || existing.base_price !== row.base_price)) {
       throw new Error(`${name}: precos conflitantes para o mesmo produto e tabela.`);
     }
     priceByProductAndTable.set(key, row);

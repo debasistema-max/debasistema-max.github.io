@@ -227,4 +227,19 @@ describe('contratos de autorização', () => {
     assert.match(migration, /if not public\.is_active_user\(\) then raise exception/);
     assert.match(api, /brand_filter: encodeFilterSelection\(params\.brand\)/);
   });
+
+  it('separa preço base e preço final na lista comercial sem ampliar acesso', () => {
+    const migration = readFileSync(new URL('../supabase/migrations/0021_commercial_list_base_price.sql', import.meta.url), 'utf8');
+    const api = readFileSync(new URL('../src/services/api.js', import.meta.url), 'utf8');
+    const exporter = readFileSync(new URL('../src/lib/exporters.js', import.meta.url), 'utf8');
+    assert.match(migration, /add column if not exists base_price numeric\(14,2\)/);
+    assert.match(migration, /import_catalog_batch_without_base_price/);
+    assert.match(migration, /search_catalog_commercial/);
+    assert.match(migration, /revoke all on function public\.search_catalog_commercial[\s\S]*from public,anon/);
+    assert.match(migration, /grant execute on function public\.search_catalog_commercial[\s\S]*to authenticated/);
+    assert.match(api, /rpc\('search_catalog_commercial'/);
+    assert.match(api, /base_price: nullableNumber/);
+    assert.match(exporter, /'Preço s\/ impostos'/);
+    assert.match(exporter, /'Preço c\/ impostos'/);
+  });
 });
