@@ -42,6 +42,9 @@ describe('reconexão segura do OneDrive', () => {
     assert.match(syncFunction, /const backupUrl = `\$\{GRAPH_ROOT\}\/items\/\$\{encodeURIComponent\(target\.folderId\)\}:\/\$\{encodeURIComponent\(backupName\)\}/);
     assert.match(syncFunction, /Number\(backup\.size\) === expectedSize/);
     assert.doesNotMatch(syncFunction, /new URL\(location\)/);
+    assert.match(syncFunction, /const sourceRows = new Map<string, number\[\]>\(\)/);
+    assert.match(syncFunction, /const updates = sanitized\.flatMap/);
+    assert.match(syncFunction, /sheet_rows_updated: updates\.length/);
     assert.match(syncFunction, /workbook\/worksheets\/\$\{sheetName\}\/range/);
     assert.ok(syncFunction.indexOf('await createWorkbookBackup(token, target)') < syncFunction.indexOf('https://graph.microsoft.com/v1.0/$batch'));
     assert.match(api, /body: \{ action: 'patch_matrix', rows \}/);

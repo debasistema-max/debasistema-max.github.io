@@ -347,17 +347,21 @@ async function patchMatrixWorkbook(rows: MatrixPatchRow[]): Promise<Record<strin
     const fieldColumns = Object.fromEntries(Object.entries(MATRIX_FIELDS).map(([field, definition]) => [
       field, headers.findIndex((header) => definition.aliases.includes(header)),
     ]));
-    const sourceRows = new Map<string, number>();
+    const sourceRows = new Map<string, number[]>();
     for (let offset = headerOffset + 1; offset < values.length; offset += 1) {
       const code = String(values[offset]?.[codeColumn] ?? "").trim().replace(/\.0+$/, "");
       if (!code) continue;
-      if (sourceRows.has(code)) throw new Error(`Codigo duplicado na aba MATRIZ: ${code}.`);
-      sourceRows.set(code, offset);
+      const offsets = sourceRows.get(code) || [];
+      offsets.push(offset);
+      sourceRows.set(code, offsets);
     }
 
-    const updates = sanitized.map((row) => {
-      const rowOffset = sourceRows.get(String(row.code));
-      if (rowOffset === undefined) throw new Error(`Codigo nao encontrado na aba MATRIZ: ${row.code}.`);
+    const updates = sanitized.flatMap((row) => {
+      const rowOffsets = sourceRows.get(String(row.code)) || [];
+      if (!rowOffsets.length) throw new Error(`Codigo nao encontrado na aba MATRIZ: ${row.code}.`);
+      if (rowOffsets.length > 1 && (row.applicationProvided || row.yearProvided)) {
+        throw new Error(`O codigo ${row.code} possui varias linhas na MATRIZ. Atualize aplicacao e ano pela planilha completa.`);
+      }
       const fields = matrixFieldValues(row);
       const targetCells = Object.entries(fields).map(([field, value]) => {
         const column = Number(fieldColumns[field]);
@@ -368,9 +372,11 @@ async function patchMatrixWorkbook(rows: MatrixPatchRow[]): Promise<Record<strin
       const lastColumn = Math.max(...targetCells.map((cell) => cell.column));
       const rowValues: (string | number | null)[] = Array(lastColumn - firstColumn + 1).fill(null);
       for (const cell of targetCells) rowValues[cell.column - firstColumn] = cell.value;
-      const excelRow = baseRow + rowOffset + 1;
-      const address = `${excelColumn(baseColumn + firstColumn)}${excelRow}:${excelColumn(baseColumn + lastColumn)}${excelRow}`;
-      return { address, values: rowValues };
+      return rowOffsets.map((rowOffset) => {
+        const excelRow = baseRow + rowOffset + 1;
+        const address = `${excelColumn(baseColumn + firstColumn)}${excelRow}:${excelColumn(baseColumn + lastColumn)}${excelRow}`;
+        return { address, values: rowValues };
+      });
     });
 
     for (let start = 0; start < updates.length; start += 20) {
@@ -392,7 +398,12 @@ async function patchMatrixWorkbook(rows: MatrixPatchRow[]): Promise<Record<strin
         throw new Error(`Falha ao atualizar uma linha da matriz (${Number(failed.status) || 500}).`);
       }
     }
-    return { updated: true, rows_updated: updates.length, backup_name: backupName };
+    return {
+      updated: true,
+      rows_updated: sanitized.length,
+      sheet_rows_updated: updates.length,
+      backup_name: backupName,
+    };
   } catch (error) {
     throw new Error(`${errorMessage(error)} Backup preservado: ${backupName}.`);
   }
