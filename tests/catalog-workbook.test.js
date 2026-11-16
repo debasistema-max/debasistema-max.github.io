@@ -116,6 +116,35 @@ test("mantém aplicação e ano em campos separados", () => {
   assert.deepEqual(product.applications, [{ application: "Veículo / Modelo", year: "2018/..." }]);
 });
 
+test("prioriza descrição, aplicação e ano da MATRIZ sobre o Cadastro Item SAP", () => {
+  const workbook = XLSX.utils.book_new();
+  const addSheet = (name, rows) => XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(rows), name);
+  addSheet("MATRIZ", [
+    ["CODIGO", "DESCRICAO", "APLICACAO", "ANO", "PRECO S/IMP", "IPI"],
+    ["ABC-20", "Descrição comercial da matriz", "KADETT 89/98 IPANEMA", "89-90 91-98", 100, "10%"],
+  ]);
+  addSheet("Cadastro Item SAP", [
+    ["Nº do item", "Descrição do item", "Código NCM", "Modelo", "Ano", "Grupo de itens"],
+    ["ABC-20", "Descrição diferente do SAP", "8708", "Kadett", "89-98", "AMORTECEDOR"],
+  ]);
+  addSheet("LISTA PR-PR", [
+    ["CODIGO", "DESCRICAO", "PRECO S/IMP", "PRECO C/IMPOSTOS"],
+    ["ABC-20", "Descrição da lista", 100, 110],
+  ]);
+  addSheet("PORTAL ESTOQUE PR", [
+    ["CODIGO", "ESTOQUE", "DISP GERAL"],
+    ["ABC-20", 5, 5],
+  ]);
+
+  const bytes = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+  const { datasets } = parsePortalWorkbook(XLSX, bytes, "matriz-prioritaria.xlsx");
+  const product = datasets.find((dataset) => dataset.kind === "PRODUTOS").rows[0];
+
+  assert.equal(product.description, "Descrição comercial da matriz");
+  assert.deepEqual(product.applications, [{ application: "KADETT 89/98 IPANEMA", year: "89-90 91-98" }]);
+  assert.ok(product.synonyms.includes("Kadett"));
+});
+
 test("separa marca da linha comercial do produto", () => {
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([

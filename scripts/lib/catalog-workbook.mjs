@@ -165,6 +165,7 @@ function ensureProduct(store, code) {
       commercial_line: "",
       synonyms: new Set(),
       applications: new Map(),
+      matrixSource: false,
       basePrice: null,
       ipiRate: null,
     };
@@ -212,6 +213,7 @@ export function parsePortalWorkbook(XLSX, bytes, name, maxRows = 50_000) {
       const code = productCode(valueAt(row, matrixHeader.columns, "codigo"));
       if (!code) continue;
       const product = ensureProduct(products, code);
+      product.matrixSource = true;
       product.description ||= publicText(valueAt(row, matrixHeader.columns, "descricao"));
       product.product_line ||= productBrandText(valueAt(row, matrixHeader.columns, "marca"), 200);
       product.commercial_line ||= commercialLine(valueAtAny(row, matrixHeader.columns, [
@@ -245,7 +247,11 @@ export function parsePortalWorkbook(XLSX, bytes, name, maxRows = 50_000) {
       product.ipiRate ??= valueAt(row, sapHeader.columns, "ipi") || null;
       const model = publicText(valueAt(row, sapHeader.columns, "modelo"), 300);
       const year = publicText(valueAt(row, sapHeader.columns, "ano"), 100);
-      addApplication(product, model, { model, year });
+      if (product.matrixSource) {
+        if (model) product.synonyms.add(model);
+      } else {
+        addApplication(product, model, { model, year });
+      }
       for (const synonymField of ["oem 01", "codigo de barras"]) {
         const synonym = publicText(valueAt(row, sapHeader.columns, synonymField), 300);
         if (synonym) product.synonyms.add(synonym);
