@@ -264,6 +264,26 @@ class SupabaseApi {
     return data;
   }
 
+  async getProductsForMatrixPatch(codes) {
+    const uniqueCodes = [...new Set((codes || []).map((code) => String(code || '').trim()).filter(Boolean))];
+    const products = [];
+    for (let index = 0; index < uniqueCodes.length; index += 100) {
+      const chunk = uniqueCodes.slice(index, index + 100);
+      const { data, error } = await this.client.from('products')
+        .select('code,description,category,commercial_line,product_line,synonyms,product_applications(vehicle,model,application,year)')
+        .in('code', chunk);
+      if (error) throw error;
+      products.push(...(data || []).map((product) => ({
+        ...product,
+        applications: (product.product_applications || []).map((item) => ({
+          application: item.application || item.model || item.vehicle || '',
+          ...(item.year ? { year: item.year } : {})
+        })).filter((item) => item.application)
+      })));
+    }
+    return products;
+  }
+
   async storageSummary() {
     const { data, error } = await this.client.rpc('storage_summary');
     if (error) throw error;
@@ -525,7 +545,33 @@ class DemoApi {
     }
     return document.document_number;
   }
-  async importRows(_kind, sourceName, rows) { return { source: sourceName, accepted: rows.length, rejected: 0, demo: true }; }
+  async importRows(kind, sourceName, rows) {
+    if (kind === 'catalog') {
+      for (const row of rows) {
+        const product = demoProducts.find((item) => item.code === row.code);
+        if (!product) continue;
+        product.description = row.description;
+        product.category = row.category;
+        product.product_line = row.commercial_line;
+        product.brand = row.product_line;
+        product.applications = (row.applications || []).map((item) => item.application);
+        product.years = (row.applications || []).map((item) => item.year).filter(Boolean);
+      }
+    }
+    return { source: sourceName, accepted: rows.length, rejected: 0, demo: true };
+  }
+  async getProductsForMatrixPatch(codes) {
+    const selected = new Set(codes || []);
+    return demoProducts.filter((product) => selected.has(product.code)).map((product) => ({
+      code: product.code,
+      description: product.description,
+      category: product.category,
+      commercial_line: product.product_line,
+      product_line: product.brand,
+      synonyms: [],
+      applications: (product.applications || []).map((application, index) => ({ application, ...(product.years?.[index] ? { year: product.years[index] } : {}) }))
+    }));
+  }
   async storageSummary() { return [{ relation: 'demo', bytes: 0, pretty_size: '0 bytes', row_count: demoProducts.length }]; }
   async listAdminProducts({ query = '', status = 'ATIVOS', page = 1, pageSize = 50 } = {}) {
     const term = String(query || '').trim().toLowerCase();

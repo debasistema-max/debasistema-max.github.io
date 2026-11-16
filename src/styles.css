@@ -334,6 +334,18 @@ tbody tr:last-child td { border-bottom: 0; }
 .import-ready strong { color: var(--navy-900); font-size: .82rem; }
 .import-ready span { color: var(--slate-500); font-size: .72rem; }
 .import-ready button { grid-column: 2; grid-row: 1 / span 2; }
+.matrix-patch-card { align-content: start; }
+.matrix-patch-guidance { display: grid; gap: 4px; margin: 2px 0 14px; padding: 12px 14px; border-radius: 10px; background: var(--slate-100); color: var(--slate-700); font-size: .76rem; }
+.matrix-patch-guidance strong { color: var(--navy-900); }
+.matrix-patch-preview { display: grid; gap: 12px; margin-top: 16px; }
+.matrix-patch-summary { display: flex; flex-wrap: wrap; gap: 8px; }
+.matrix-patch-summary span { display: inline-flex; gap: 5px; padding: 7px 10px; border: 1px solid var(--slate-200); border-radius: 999px; color: var(--slate-600); font-size: .72rem; }
+.matrix-patch-summary strong { color: var(--navy-900); }
+.matrix-patch-fields { margin: 0; color: var(--slate-600); font-size: .75rem; }
+.matrix-patch-fields strong { color: var(--navy-900); }
+.matrix-patch-table { min-width: 760px; }
+.matrix-patch-table td:nth-child(3), .matrix-patch-table td:nth-child(4) { max-width: 320px; white-space: normal; }
+.matrix-patch-preview > .button { justify-self: start; }
 .metric-list { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
 .metric-list li { display: flex; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--slate-200); padding: 9px 0; font-size: .78rem; }
 .metric-list span { color: var(--slate-500); }

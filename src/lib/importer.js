@@ -92,3 +92,17 @@ export async function parseImportFile(file) {
 
   return { sheetName: workbook.SheetNames[0], headers, rows, inferredKind: inferImportKind(headers) };
 }
+
+export async function parseMatrixPatchFile(file) {
+  if (!file) throw new Error('Selecione um arquivo Excel ou CSV.');
+  if (file.size > MAX_FILE_BYTES) throw new Error('O arquivo excede o limite de 20 MB.');
+  if (!/\.(xlsx|xls|csv)$/i.test(file.name)) throw new Error('Formato não suportado. Use XLSX, XLS ou CSV.');
+  const XLSX = await import('xlsx');
+  const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: false });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  if (!sheet) throw new Error('O arquivo não possui planilha legível.');
+  const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: null, raw: true });
+  if (rawRows.length > 1_000) throw new Error('A atualização parcial aceita até 1.000 itens por arquivo.');
+  const { parseMatrixPatchRecords } = await import('./matrix-patch.js');
+  return { sheetName: workbook.SheetNames[0], ...parseMatrixPatchRecords(rawRows) };
+}

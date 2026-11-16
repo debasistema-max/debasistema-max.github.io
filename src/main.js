@@ -9,6 +9,7 @@ import { STATES, commercialApplicationValues, commercialYearValues, escapeHtml, 
 
 const root = document.querySelector('#app');
 let pendingImport = null;
+let pendingMatrixPatch = null;
 let needsPasswordSetup = false;
 let photoZoom = 1;
 let sapValidationSession = null;
@@ -505,6 +506,21 @@ function productsAdminPanel() {
   </section>`;
 }
 
+function matrixPatchPanel() {
+  const pending = pendingMatrixPatch;
+  const previewRows = pending?.changes?.slice(0, 100) || [];
+  const missingNotice = pending?.missingCodes?.length
+    ? `<div class="notice notice-error"><strong>${integer(pending.missingCodes.length)} código(s) não encontrado(s)</strong><span>${escapeHtml(pending.missingCodes.slice(0, 20).join(', '))}${pending.missingCodes.length > 20 ? '…' : ''}</span><span>Corrija esses códigos antes de aplicar a atualização.</span></div>`
+    : '';
+  const preview = pending ? `<div class="matrix-patch-preview">
+    <div class="matrix-patch-summary"><span><strong>${integer(pending.originalCount)}</strong> itens lidos</span><span><strong>${integer(pending.mergedRows.length)}</strong> itens alterados</span><span><strong>${integer(pending.changes.length)}</strong> campos modificados</span><span><strong>${integer(pending.unchanged)}</strong> sem alteração</span></div>
+    <p class="matrix-patch-fields">Colunas reconhecidas: <strong>${escapeHtml(pending.fields.map((field) => field.label).join(', '))}</strong></p>${missingNotice}
+    ${previewRows.length ? `<div class="table-wrap"><table class="matrix-patch-table"><thead><tr><th>Código</th><th>Campo</th><th>Antes</th><th>Depois</th></tr></thead><tbody>${previewRows.map((change) => `<tr><td><strong>${escapeHtml(change.code)}</strong></td><td>${escapeHtml(change.field)}</td><td>${escapeHtml(change.before || '—')}</td><td>${escapeHtml(change.after || '—')}</td></tr>`).join('')}</tbody></table></div>${pending.changes.length > previewRows.length ? `<p class="muted">Exibindo as primeiras ${integer(previewRows.length)} alterações de ${integer(pending.changes.length)}.</p>` : ''}` : '<p class="muted">Os valores do arquivo já são iguais aos dados atuais.</p>'}
+    <button class="button button-primary" data-action="apply-matrix-patch" ${state.busy || pending.missingCodes.length || !pending.mergedRows.length ? 'disabled' : ''}>${state.busy ? 'Atualizando…' : `Atualizar ${integer(pending.mergedRows.length)} item(ns)`}</button>
+  </div>` : '<p class="muted">Envie uma planilha contendo somente os códigos que o chefe alterou.</p>';
+  return `<section class="panel admin-card admin-wide matrix-patch-card"><div class="section-title"><span>1B</span><div><h2>Atualizar alguns itens da matriz</h2><p>Altere vários itens de uma vez sem substituir a lista completa.</p></div></div><div class="matrix-patch-guidance"><strong>Colunas aceitas</strong><span>Código, Descrição, Aplicação, Ano, Categoria, Linha, Marca e Sinônimos.</span><span>Células vazias mantêm o valor atual. Para apagar um valor, escreva <b>LIMPAR</b>.</span></div><input id="matrix-patch-file" type="file" accept=".xlsx,.xls,.csv">${preview}</section>`;
+}
+
 function sapStockDisplay(value) {
   if (value === null || value === undefined || value === '') return 'Não informado';
   const quantity = Number(value);
@@ -551,7 +567,8 @@ function renderAdmin() {
     : '<button class="button button-ghost" type="button" data-action="start-onedrive-connection">Reconectar OneDrive</button>';
   return `${pageHeader('Configuração', 'Administração', 'Gerencie a atualização dos dados sem expor credenciais no navegador.')}
     <div class="admin-grid">
-      <section class="panel admin-card"><div class="section-title"><span>1</span><div><h2>Importação manual</h2><p>XLSX, XLS ou CSV. O arquivo original não é enviado nem armazenado.</p></div></div><input id="import-file" type="file" accept=".xlsx,.xls,.csv"><div id="import-preview">${pendingImport ? `<div class="import-ready"><strong>${escapeHtml(pendingImport.fileName)}</strong><span>${integer(pendingImport.rows.length)} linhas · tipo ${escapeHtml(pendingImport.kind)}</span><button class="button button-primary" data-action="commit-import">Validar e importar</button></div>` : '<p class="muted">Selecione um arquivo para validar os cabeçalhos.</p>'}</div></section>
+      <section class="panel admin-card"><div class="section-title"><span>1</span><div><h2>Importação manual completa</h2><p>Use para catálogo completo, preços ou estoque. XLSX, XLS ou CSV.</p></div></div><input id="import-file" type="file" accept=".xlsx,.xls,.csv"><div id="import-preview">${pendingImport ? `<div class="import-ready"><strong>${escapeHtml(pendingImport.fileName)}</strong><span>${integer(pendingImport.rows.length)} linhas · tipo ${escapeHtml(pendingImport.kind)}</span><button class="button button-primary" data-action="commit-import">Validar e importar</button></div>` : '<p class="muted">O arquivo original não é enviado nem armazenado.</p>'}</div></section>
+      ${matrixPatchPanel()}
       <section class="panel admin-card"><div class="section-title"><span>2</span><div><h2>Catálogo online</h2><p>Planilha e fotos são sincronizadas somente quando um administrador solicitar.</p></div></div><p>Última atualização: <strong>${escapeHtml(formatDateTime(state.lastSync?.finished_at || state.lastSync?.started_at))}</strong></p>${syncStatus}<div class="admin-sync-actions"><button class="button button-primary" data-action="sync-drive" ${syncActive ? 'disabled' : ''}>${syncActive ? 'Sincronizando…' : 'Sincronizar tudo'}</button><button class="button button-secondary" data-action="sync-photos" ${syncActive ? 'disabled' : ''}>Atualizar fotos pelo site</button></div>${connectionMarkup}</section>
       ${syncHistoryPanel()}
       ${sapValidationPanel(selectedTable)}
@@ -961,6 +978,7 @@ root.addEventListener('click', async (event) => {
     return;
   }
   if (action === 'commit-import') { await handleImport(); return; }
+  if (action === 'apply-matrix-patch') { await handleMatrixPatch(); return; }
   if (action === 'sync-drive') { await handleDriveSync(); return; }
   if (action === 'sync-photos') { await handlePhotoSync(); return; }
   if (action === 'start-onedrive-connection') { await handleStartOneDriveConnection(); return; }
@@ -1043,6 +1061,27 @@ root.addEventListener('change', async (event) => {
       pendingImport = { fileName: file.name, rows: parsed.rows, kind: parsed.inferredKind, headers: parsed.headers };
       setToast('Arquivo validado localmente.', 'success'); updateView();
     } catch (error) { pendingImport = null; setToast(error.message, 'error'); updateView(); }
+  }
+  if (event.target.id === 'matrix-patch-file') {
+    try {
+      const file = event.target.files?.[0];
+      const { parseMatrixPatchFile } = await import('./lib/importer.js');
+      const { prepareMatrixPatch } = await import('./lib/matrix-patch.js');
+      const parsed = await parseMatrixPatchFile(file);
+      const currentProducts = await api.getProductsForMatrixPatch(parsed.rows.map((row) => row.code));
+      pendingMatrixPatch = {
+        fileName: file.name,
+        originalCount: parsed.rows.length,
+        fields: parsed.fields,
+        ...prepareMatrixPatch(parsed.rows, currentProducts)
+      };
+      setToast(`${integer(pendingMatrixPatch.changes.length)} alteração(ões) pronta(s) para revisão.`, pendingMatrixPatch.missingCodes.length ? 'error' : 'success');
+      updateView();
+    } catch (error) {
+      pendingMatrixPatch = null;
+      setToast(error.message || 'Não foi possível preparar a atualização parcial.', 'error');
+      updateView();
+    }
   }
 });
 
@@ -1287,6 +1326,27 @@ async function handleImport() {
   }
   catch (error) { setToast(error.message || 'Falha na importação.', 'error'); }
   finally { state.busy = false; updateView(); }
+}
+
+async function handleMatrixPatch() {
+  if (!pendingMatrixPatch?.mergedRows?.length || pendingMatrixPatch.missingCodes.length) return;
+  state.busy = true; updateView();
+  try {
+    const result = await api.importRows('catalog', `partial-matrix:${pendingMatrixPatch.fileName}`, pendingMatrixPatch.mergedRows);
+    if (result?.ok === false) throw new Error(result.error || 'A atualização parcial foi rejeitada.');
+    const applied = result.rows_applied ?? result.accepted ?? pendingMatrixPatch.mergedRows.length;
+    setToast(`Matriz atualizada: ${integer(applied)} item(ns) e ${integer(pendingMatrixPatch.changes.length)} campo(s) alterado(s).`, 'success');
+    pendingMatrixPatch = null;
+    const [context, catalogOptions] = await Promise.all([api.loadContext(), api.getCatalogFilterOptions()]);
+    state.lastSync = context.lastSync;
+    applyCatalogOptions(catalogOptions);
+    state.listSelection.clear();
+    await Promise.all([refreshProducts(false), loadAdminProducts(false), loadSyncHistory(false)]);
+  } catch (error) {
+    setToast(error.message || 'Falha ao atualizar os itens da matriz.', 'error');
+  } finally {
+    state.busy = false; updateView();
+  }
 }
 
 async function pollDriveSync(jobId) {
