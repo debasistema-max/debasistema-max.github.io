@@ -35,6 +35,7 @@ type SyncRequest = {
 };
 
 const GRAPH_ROOT = "https://graph.microsoft.com/v1.0/me/drive";
+const BACKUP_FOLDER_NAME = "Backup DebaPortal";
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 
 function requiredEnv(name: string): string {
@@ -289,20 +290,63 @@ function matrixFieldValues(row: MatrixPatchRow): Record<string, string | number>
   return values;
 }
 
+async function findBackupFolder(token: string, parentFolderId: string): Promise<string | null> {
+  const folderUrl = `${GRAPH_ROOT}/items/${encodeURIComponent(parentFolderId)}:/${encodeURIComponent(BACKUP_FOLDER_NAME)}?%24select=id,name,folder`;
+  const response = await fetchWithRetry(folderUrl, {
+    cache: "no-store",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+      "Cache-Control": "no-cache, no-store",
+    },
+  });
+  if (response.status === 404) return null;
+  const item = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(`Nao foi possivel localizar a pasta de backup (${response.status}).`);
+  if (item.name !== BACKUP_FOLDER_NAME || !item.folder || !item.id) {
+    throw new Error(`Ja existe um arquivo chamado ${BACKUP_FOLDER_NAME}; renomeie-o para liberar a pasta de backup.`);
+  }
+  return String(item.id);
+}
+
+async function ensureBackupFolder(token: string, parentFolderId: string): Promise<string> {
+  const existingId = await findBackupFolder(token, parentFolderId);
+  if (existingId) return existingId;
+  const response = await fetchWithRetry(`${GRAPH_ROOT}/items/${encodeURIComponent(parentFolderId)}/children`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: BACKUP_FOLDER_NAME,
+      folder: {},
+      "@microsoft.graph.conflictBehavior": "fail",
+    }),
+  });
+  if (response.status === 409) {
+    const racedId = await findBackupFolder(token, parentFolderId);
+    if (racedId) return racedId;
+  }
+  const folder = await response.json().catch(() => ({}));
+  if (!response.ok || folder.name !== BACKUP_FOLDER_NAME || !folder.folder || !folder.id) {
+    throw new Error(`Nao foi possivel criar a pasta ${BACKUP_FOLDER_NAME} no OneDrive (${response.status}).`);
+  }
+  return String(folder.id);
+}
+
 async function createWorkbookBackup(token: string, target: { item: GraphItem; folderId: string; driveId: string }): Promise<string> {
+  const backupFolderId = await ensureBackupFolder(token, target.folderId);
   const now = new Date().toISOString().replace(/[-:]/g, "").replace(/T/, "-").slice(0, 15);
   const suffix = crypto.randomUUID().slice(0, 4);
   const backupName = `DebaPortal-backup-matriz-${now}-${suffix}.xlsx`;
   const response = await fetchWithRetry(`${GRAPH_ROOT}/items/${encodeURIComponent(target.item.id)}/copy`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ parentReference: { driveId: target.driveId, id: target.folderId }, name: backupName }),
+    body: JSON.stringify({ parentReference: { driveId: target.driveId, id: backupFolderId }, name: backupName }),
   });
   if (response.status !== 202) {
     const failure = await response.json().catch(() => ({}));
     throw new Error(`Nao foi possivel criar o backup no OneDrive (${response.status}, ${String(failure?.error?.code || "erro").replace(/[^a-z0-9_.-]/gi, "")}).`);
   }
-  const backupUrl = `${GRAPH_ROOT}/items/${encodeURIComponent(target.folderId)}:/${encodeURIComponent(backupName)}?%24select=id,name,size,file`;
+  const backupUrl = `${GRAPH_ROOT}/items/${encodeURIComponent(backupFolderId)}:/${encodeURIComponent(backupName)}?%24select=id,name,size,file`;
   for (let attempt = 0; attempt < 24; attempt += 1) {
     const statusResponse = await fetchWithRetry(backupUrl, {
       cache: "no-store",
@@ -403,9 +447,10 @@ async function patchMatrixWorkbook(rows: MatrixPatchRow[]): Promise<Record<strin
       rows_updated: sanitized.length,
       sheet_rows_updated: updates.length,
       backup_name: backupName,
+      backup_folder: BACKUP_FOLDER_NAME,
     };
   } catch (error) {
-    throw new Error(`${errorMessage(error)} Backup preservado: ${backupName}.`);
+    throw new Error(`${errorMessage(error)} Backup preservado: ${BACKUP_FOLDER_NAME}/${backupName}.`);
   }
 }
 

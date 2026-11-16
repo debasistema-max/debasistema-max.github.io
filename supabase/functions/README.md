@@ -40,7 +40,7 @@ O workflow também recebe `PRODUCT_CATALOG_API_URL` e `PRODUCT_IMAGE_ORIGIN` com
 secrets do GitHub Actions. Ele grava somente o caminho validado da foto. A Edge
 Function faz o download sob demanda e não redireciona o navegador para a fonte.
 
-O aplicativo Microsoft usa `Files.ReadWrite` delegado para ler a fonte autorizada e atualizar somente células validadas da aba `MATRIZ`. A funcao aceita apenas a pasta e o arquivo configurados nos secrets; a requisicao do navegador nao pode substituir esses alvos. Antes de cada atualização parcial, uma cópia datada é criada no mesmo diretório.
+O aplicativo Microsoft usa `Files.ReadWrite` delegado para ler a fonte autorizada e atualizar somente células validadas da aba `MATRIZ`. A funcao aceita apenas a pasta e o arquivo configurados nos secrets; a requisicao do navegador nao pode substituir esses alvos. Antes de cada atualização parcial, a funcao cria, se necessário, a subpasta fixa `Backup DebaPortal` dentro da pasta autorizada e confirma nela uma cópia datada da planilha. Backups existentes no diretório principal não são movidos automaticamente.
 
 ## Contrato da solicitacao
 

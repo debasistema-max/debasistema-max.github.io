@@ -1340,7 +1340,10 @@ async function handleMatrixPatch(updateOneDrive = false) {
     if (result?.ok === false) throw new Error(result.error || 'A atualização parcial foi rejeitada.');
     const applied = result.rows_applied ?? result.accepted ?? pendingMatrixPatch.mergedRows.length;
     syncResult = updateOneDrive && pendingMatrixPatch.hasBasePrice ? await api.requestDriveSync() : null;
-    const backup = driveResult?.backup_name ? ` Backup: ${driveResult.backup_name}.` : '';
+    const backupPath = driveResult?.backup_folder
+      ? `${driveResult.backup_folder}/${driveResult.backup_name}`
+      : driveResult?.backup_name;
+    const backup = backupPath ? ` Backup: ${backupPath}.` : '';
     const synchronization = syncResult?.job_id ? ' A sincronização dos preços foi solicitada.' : '';
     setToast(`Matriz atualizada${updateOneDrive ? ' no portal e no OneDrive' : ' somente no portal'}: ${integer(applied)} item(ns).${backup}${synchronization}`, 'success');
     pendingMatrixPatch = null;
