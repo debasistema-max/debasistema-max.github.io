@@ -102,7 +102,7 @@ export async function parseMatrixPatchFile(file) {
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   if (!sheet) throw new Error('O arquivo não possui planilha legível.');
   const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: null, raw: true });
-  if (rawRows.length > 1_000) throw new Error('A atualização parcial aceita até 1.000 itens por arquivo.');
+  if (rawRows.length > 200) throw new Error('A atualização parcial aceita até 200 itens por arquivo.');
   const { parseMatrixPatchRecords } = await import('./matrix-patch.js');
   return { sheetName: workbook.SheetNames[0], ...parseMatrixPatchRecords(rawRows) };
 }

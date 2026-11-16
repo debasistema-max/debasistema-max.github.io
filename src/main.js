@@ -516,9 +516,9 @@ function matrixPatchPanel() {
     <div class="matrix-patch-summary"><span><strong>${integer(pending.originalCount)}</strong> itens lidos</span><span><strong>${integer(pending.mergedRows.length)}</strong> itens alterados</span><span><strong>${integer(pending.changes.length)}</strong> campos modificados</span><span><strong>${integer(pending.unchanged)}</strong> sem alteração</span></div>
     <p class="matrix-patch-fields">Colunas reconhecidas: <strong>${escapeHtml(pending.fields.map((field) => field.label).join(', '))}</strong></p>${missingNotice}
     ${previewRows.length ? `<div class="table-wrap"><table class="matrix-patch-table"><thead><tr><th>Código</th><th>Campo</th><th>Antes</th><th>Depois</th></tr></thead><tbody>${previewRows.map((change) => `<tr><td><strong>${escapeHtml(change.code)}</strong></td><td>${escapeHtml(change.field)}</td><td>${escapeHtml(change.before || '—')}</td><td>${escapeHtml(change.after || '—')}</td></tr>`).join('')}</tbody></table></div>${pending.changes.length > previewRows.length ? `<p class="muted">Exibindo as primeiras ${integer(previewRows.length)} alterações de ${integer(pending.changes.length)}.</p>` : ''}` : '<p class="muted">Os valores do arquivo já são iguais aos dados atuais.</p>'}
-    <button class="button button-primary" data-action="apply-matrix-patch" ${state.busy || pending.missingCodes.length || !pending.mergedRows.length ? 'disabled' : ''}>${state.busy ? 'Atualizando…' : `Atualizar ${integer(pending.mergedRows.length)} item(ns)`}</button>
+    <div class="matrix-patch-actions"><button class="button button-primary" data-action="apply-matrix-patch-drive" ${state.busy || pending.missingCodes.length || !pending.mergedRows.length ? 'disabled' : ''}>${state.busy ? 'Atualizando…' : 'Atualizar portal e OneDrive'}</button><button class="button button-secondary" data-action="apply-matrix-patch" ${state.busy || pending.missingCodes.length || !pending.mergedRows.length ? 'disabled' : ''}>Somente portal</button></div>
   </div>` : '<p class="muted">Envie uma planilha contendo somente os códigos que o chefe alterou.</p>';
-  return `<section class="panel admin-card admin-wide matrix-patch-card"><div class="section-title"><span>1B</span><div><h2>Atualizar alguns itens da matriz</h2><p>Altere vários itens de uma vez sem substituir a lista completa.</p></div></div><div class="matrix-patch-guidance"><strong>Colunas aceitas</strong><span>Código, Descrição, Aplicação, Ano, Categoria, Linha, Marca e Sinônimos.</span><span>Células vazias mantêm o valor atual. Para apagar um valor, escreva <b>LIMPAR</b>.</span></div><input id="matrix-patch-file" type="file" accept=".xlsx,.xls,.csv">${preview}</section>`;
+  return `<section class="panel admin-card admin-wide matrix-patch-card"><div class="section-title"><span>1B</span><div><h2>Atualizar alguns itens da matriz</h2><p>Altere vários itens de uma vez sem substituir a lista completa.</p></div></div><div class="matrix-patch-guidance"><strong>Colunas aceitas</strong><span>Código, Descrição, Aplicação, Ano, Categoria, Linha, Marca e Sinônimos.</span><span>Células vazias mantêm o valor atual. Para apagar um valor, escreva <b>LIMPAR</b>.</span><span>Ao atualizar o OneDrive, o portal cria primeiro uma cópia de segurança datada da planilha.</span><span>Na primeira utilização, clique em <b>Reconectar OneDrive</b> para autorizar a gravação.</span></div><input id="matrix-patch-file" type="file" accept=".xlsx,.xls,.csv">${preview}</section>`;
 }
 
 function sapStockDisplay(value) {
@@ -979,6 +979,7 @@ root.addEventListener('click', async (event) => {
   }
   if (action === 'commit-import') { await handleImport(); return; }
   if (action === 'apply-matrix-patch') { await handleMatrixPatch(); return; }
+  if (action === 'apply-matrix-patch-drive') { await handleMatrixPatch(true); return; }
   if (action === 'sync-drive') { await handleDriveSync(); return; }
   if (action === 'sync-photos') { await handlePhotoSync(); return; }
   if (action === 'start-onedrive-connection') { await handleStartOneDriveConnection(); return; }
@@ -1069,11 +1070,14 @@ root.addEventListener('change', async (event) => {
       const { prepareMatrixPatch } = await import('./lib/matrix-patch.js');
       const parsed = await parseMatrixPatchFile(file);
       const currentProducts = await api.getProductsForMatrixPatch(parsed.rows.map((row) => row.code));
+      const prepared = prepareMatrixPatch(parsed.rows, currentProducts);
+      const changedCodes = new Set(prepared.mergedRows.map((row) => row.code));
       pendingMatrixPatch = {
         fileName: file.name,
         originalCount: parsed.rows.length,
         fields: parsed.fields,
-        ...prepareMatrixPatch(parsed.rows, currentProducts)
+        driveRows: parsed.rows.filter((row) => changedCodes.has(row.code)),
+        ...prepared
       };
       setToast(`${integer(pendingMatrixPatch.changes.length)} alteração(ões) pronta(s) para revisão.`, pendingMatrixPatch.missingCodes.length ? 'error' : 'success');
       updateView();
@@ -1328,14 +1332,17 @@ async function handleImport() {
   finally { state.busy = false; updateView(); }
 }
 
-async function handleMatrixPatch() {
+async function handleMatrixPatch(updateOneDrive = false) {
   if (!pendingMatrixPatch?.mergedRows?.length || pendingMatrixPatch.missingCodes.length) return;
   state.busy = true; updateView();
+  let driveResult = null;
   try {
+    driveResult = updateOneDrive ? await api.patchMatrixOneDrive(pendingMatrixPatch.driveRows) : null;
     const result = await api.importRows('catalog', `partial-matrix:${pendingMatrixPatch.fileName}`, pendingMatrixPatch.mergedRows);
     if (result?.ok === false) throw new Error(result.error || 'A atualização parcial foi rejeitada.');
     const applied = result.rows_applied ?? result.accepted ?? pendingMatrixPatch.mergedRows.length;
-    setToast(`Matriz atualizada: ${integer(applied)} item(ns) e ${integer(pendingMatrixPatch.changes.length)} campo(s) alterado(s).`, 'success');
+    const backup = driveResult?.backup_name ? ` Backup: ${driveResult.backup_name}.` : '';
+    setToast(`Matriz atualizada${updateOneDrive ? ' no portal e no OneDrive' : ' somente no portal'}: ${integer(applied)} item(ns).${backup}`, 'success');
     pendingMatrixPatch = null;
     const [context, catalogOptions] = await Promise.all([api.loadContext(), api.getCatalogFilterOptions()]);
     state.lastSync = context.lastSync;
@@ -1343,7 +1350,9 @@ async function handleMatrixPatch() {
     state.listSelection.clear();
     await Promise.all([refreshProducts(false), loadAdminProducts(false), loadSyncHistory(false)]);
   } catch (error) {
-    setToast(error.message || 'Falha ao atualizar os itens da matriz.', 'error');
+    setToast(driveResult?.updated
+      ? `O OneDrive foi atualizado, mas o portal não concluiu. Use Sincronizar tudo para aplicar a planilha. ${error.message || ''}`
+      : (error.message || 'Falha ao atualizar os itens da matriz.'), 'error');
   } finally {
     state.busy = false; updateView();
   }

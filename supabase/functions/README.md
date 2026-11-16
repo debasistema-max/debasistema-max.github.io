@@ -5,7 +5,7 @@ Estas funcoes pertencem ao projeto Supabase exclusivo do DebaPortal. Nao as publ
 ## Funcoes
 
 - `consulta-cnpj`: exige JWT valido, valida os digitos verificadores e consulta BrasilAPI com fallback para ReceitaWS. A resposta nao e gravada como cliente.
-- `sync-onedrive`: valida ADMIN, cria uma solicitação protegida e dispara o workflow remoto somente quando o portal solicitar.
+- `sync-onedrive`: valida ADMIN, cria uma solicitação protegida, dispara o workflow remoto e permite atualizar linhas específicas da aba MATRIZ com backup automático.
 - `product-image`: exige JWT e perfil ativo, valida o código e entrega a foto pelo backend sem expor a origem ao navegador.
 - `admin-users`: exige perfil ADMIN e envia convite pelo Supabase Auth. A chave administrativa permanece somente no ambiente seguro da Edge Function.
 
@@ -25,7 +25,7 @@ ALLOW_LOCALHOST=false
 APP_URL=https://debasistema-max.github.io
 MS_GRAPH_CLIENT_ID=<aplicativo Microsoft autorizado>
 MS_GRAPH_REFRESH_TOKEN=<refresh token delegado>
-MS_GRAPH_SCOPE=offline_access Files.Read
+MS_GRAPH_SCOPE=offline_access Files.ReadWrite
 ONEDRIVE_FOLDER_PATH=<pasta exata autorizada>
 ONEDRIVE_WORKBOOK_NAME=<arquivo exato autorizado>
 GITHUB_SYNC_TOKEN=<token com Actions write no repositorio>
@@ -40,7 +40,7 @@ O workflow também recebe `PRODUCT_CATALOG_API_URL` e `PRODUCT_IMAGE_ORIGIN` com
 secrets do GitHub Actions. Ele grava somente o caminho validado da foto. A Edge
 Function faz o download sob demanda e não redireciona o navegador para a fonte.
 
-O aplicativo Microsoft usa somente `Files.Read` delegado. A funcao aceita apenas a pasta e o arquivo configurados nos secrets; a requisicao do navegador nao pode substituir esses alvos.
+O aplicativo Microsoft usa `Files.ReadWrite` delegado para ler a fonte autorizada e atualizar somente células validadas da aba `MATRIZ`. A funcao aceita apenas a pasta e o arquivo configurados nos secrets; a requisicao do navegador nao pode substituir esses alvos. Antes de cada atualização parcial, uma cópia datada é criada no mesmo diretório.
 
 ## Contrato da solicitacao
 

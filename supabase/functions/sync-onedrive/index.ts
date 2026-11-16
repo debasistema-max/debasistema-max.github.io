@@ -9,13 +9,28 @@ type GraphItem = {
   lastModifiedDateTime?: string;
   file?: { mimeType?: string };
   folder?: { childCount?: number };
+  parentReference?: { driveId?: string; id?: string };
   "@microsoft.graph.downloadUrl"?: string;
 };
+type MatrixPatchRow = {
+  code?: string;
+  description?: string | null;
+  category?: string | null;
+  product_line?: string | null;
+  commercial_line?: string | null;
+  synonyms?: string[];
+  applicationProvided?: boolean;
+  applicationClear?: boolean;
+  applicationValues?: string[];
+  yearProvided?: boolean;
+  yearValues?: string[];
+};
 type SyncRequest = {
-  action?: "dispatch" | "dispatch_photos" | "check" | "download" | "connect_start" | "connect_complete";
+  action?: "dispatch" | "dispatch_photos" | "check" | "download" | "connect_start" | "connect_complete" | "patch_matrix";
   job_id?: string;
   retry_failed?: boolean;
   device_code?: string;
+  rows?: MatrixPatchRow[];
 };
 
 const GRAPH_ROOT = "https://graph.microsoft.com/v1.0/me/drive";
@@ -78,7 +93,7 @@ async function startMicrosoftConnection(): Promise<Record<string, unknown>> {
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       client_id: requiredEnv("MS_GRAPH_CLIENT_ID"),
-      scope: Deno.env.get("MS_GRAPH_SCOPE") || "offline_access Files.Read",
+      scope: "offline_access Files.ReadWrite",
     }),
   });
   const data = await response.json().catch(() => ({}));
@@ -123,8 +138,17 @@ async function completeMicrosoftConnection(deviceCode: string): Promise<{ connec
   return { connected: true };
 }
 
-async function graphToken(): Promise<string> {
-  return await microsoftToken(Deno.env.get("MS_GRAPH_SCOPE") || "offline_access Files.Read");
+async function graphToken(writeAccess = false): Promise<string> {
+  try {
+    return await microsoftToken(writeAccess
+      ? "offline_access Files.ReadWrite"
+      : (Deno.env.get("MS_GRAPH_SCOPE") || "offline_access Files.Read"));
+  } catch (error) {
+    if (writeAccess) {
+      throw new Error(`Permissao de escrita ausente. Reconecte o OneDrive no painel. ${errorMessage(error)}`);
+    }
+    throw error;
+  }
 }
 
 async function graphJson(url: string, token: string): Promise<Record<string, unknown>> {
@@ -141,7 +165,7 @@ async function graphJson(url: string, token: string): Promise<Record<string, unk
   return await response.json();
 }
 
-async function resolveWorkbook(token: string): Promise<GraphItem> {
+async function resolveWorkbookTarget(token: string): Promise<{ item: GraphItem; folderId: string; driveId: string }> {
   const folderName = requiredEnv("ONEDRIVE_FOLDER_PATH");
   const workbookName = requiredEnv("ONEDRIVE_WORKBOOK_NAME");
   if (folderName.includes("/") || !workbookName.toLowerCase().endsWith(".xlsx")) {
@@ -161,7 +185,207 @@ async function resolveWorkbook(token: string): Promise<GraphItem> {
   );
   if (matches.length !== 1) throw new Error("Planilha exclusiva do OneDrive nao encontrada.");
   const itemId = encodeURIComponent(String((matches[0] as GraphItem).id));
-  return await graphJson(`${GRAPH_ROOT}/items/${itemId}`, token) as GraphItem;
+  const [item, drive] = await Promise.all([
+    graphJson(`${GRAPH_ROOT}/items/${itemId}`, token) as Promise<GraphItem>,
+    graphJson("https://graph.microsoft.com/v1.0/me/drive?%24select=id", token),
+  ]);
+  const driveId = String(drive.id || "");
+  if (!driveId) throw new Error("Microsoft nao informou o identificador do OneDrive.");
+  return { item, folderId: String((folders[0] as GraphItem).id), driveId };
+}
+
+async function resolveWorkbook(token: string): Promise<GraphItem> {
+  return (await resolveWorkbookTarget(token)).item;
+}
+
+const MATRIX_FIELDS: Record<string, { label: string; aliases: string[] }> = {
+  description: { label: "Descricao", aliases: ["descricao", "description", "produto", "nome"] },
+  category: { label: "Categoria", aliases: ["categoria", "category", "grupo"] },
+  product_line: { label: "Marca", aliases: ["marca", "brand", "fabricante"] },
+  commercial_line: {
+    label: "Linha",
+    aliases: ["linha", "commercial_line", "linha_produto", "segmento", "tipo", "tipo_veiculo", "linha_veiculo", "categoria_veiculo", "classificacao"],
+  },
+  synonyms: { label: "Sinonimos", aliases: ["sinonimos", "synonyms", "similares", "similar", "oem"] },
+  application: { label: "Aplicacao", aliases: ["aplicacao", "applications", "application", "aplicacoes", "aplicacao_veiculo", "veiculo", "modelo"] },
+  year: { label: "Ano", aliases: ["ano", "year", "anos"] },
+};
+const CODE_HEADERS = ["codigo", "code", "codigo_produto", "sku", "item"];
+
+function normalizeHeader(value: unknown): string {
+  return String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+}
+
+function safeMatrixText(value: unknown, label: string, maxLength = 500): string {
+  const text = String(value ?? "").trim().replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "");
+  if (text.length > maxLength) throw new Error(`${label} excede o limite permitido.`);
+  if (/^[=+@]/.test(text)) throw new Error(`${label} nao pode iniciar com formula.`);
+  return text;
+}
+
+function listText(value: unknown, label: string): string {
+  if (!Array.isArray(value)) throw new Error(`${label} invalido na atualizacao parcial.`);
+  if (value.length > 50) throw new Error(`${label} excede o limite de valores.`);
+  return value.map((item) => safeMatrixText(item, label, 300)).filter(Boolean).join("; ");
+}
+
+function sanitizeMatrixRows(rows: MatrixPatchRow[] | undefined): MatrixPatchRow[] {
+  if (!Array.isArray(rows) || rows.length === 0) throw new Error("Atualizacao parcial vazia.");
+  if (rows.length > 200) throw new Error("Atualize no maximo 200 itens por operacao no OneDrive.");
+  const seen = new Set<string>();
+  return rows.map((row) => {
+    const code = safeMatrixText(row?.code, "Codigo", 120).replace(/\.0+$/, "");
+    if (!code) throw new Error("Codigo vazio na atualizacao parcial.");
+    if (seen.has(code)) throw new Error(`Codigo duplicado na atualizacao parcial: ${code}.`);
+    seen.add(code);
+    const sanitized: MatrixPatchRow = { code };
+    for (const field of ["description", "category", "product_line", "commercial_line"] as const) {
+      if (Object.hasOwn(row, field)) sanitized[field] = row[field] === null ? null : safeMatrixText(row[field], MATRIX_FIELDS[field].label, field === "description" ? 500 : 200);
+    }
+    if (Object.hasOwn(row, "synonyms")) sanitized.synonyms = String(listText(row.synonyms, "Sinonimos")).split("; ").filter(Boolean);
+    if (row.applicationProvided) {
+      sanitized.applicationProvided = true;
+      sanitized.applicationClear = Boolean(row.applicationClear);
+      sanitized.applicationValues = row.applicationClear ? [] : listText(row.applicationValues || [], "Aplicacao").split("; ").filter(Boolean);
+    }
+    if (row.yearProvided) {
+      sanitized.yearProvided = true;
+      sanitized.yearValues = listText(row.yearValues || [], "Ano").split("; ").filter(Boolean);
+    }
+    const hasChange = Object.keys(sanitized).some((key) => key !== "code" && !key.endsWith("Provided") && key !== "applicationClear");
+    if (!hasChange) throw new Error(`Nenhum campo informado para o codigo ${code}.`);
+    return sanitized;
+  });
+}
+
+function excelColumn(index: number): string {
+  let value = index + 1;
+  let result = "";
+  while (value > 0) {
+    value -= 1;
+    result = String.fromCharCode(65 + (value % 26)) + result;
+    value = Math.floor(value / 26);
+  }
+  return result;
+}
+
+function matrixFieldValues(row: MatrixPatchRow): Record<string, string> {
+  const values: Record<string, string> = {};
+  for (const field of ["description", "category", "product_line", "commercial_line"] as const) {
+    if (Object.hasOwn(row, field)) values[field] = row[field] === null ? "" : String(row[field]);
+  }
+  if (Object.hasOwn(row, "synonyms")) values.synonyms = (row.synonyms || []).join("; ");
+  if (row.applicationProvided) values.application = row.applicationClear ? "" : (row.applicationValues || []).join("; ");
+  if (row.yearProvided) values.year = (row.yearValues || []).join("; ");
+  return values;
+}
+
+async function createWorkbookBackup(token: string, target: { item: GraphItem; folderId: string; driveId: string }): Promise<string> {
+  const now = new Date().toISOString().replace(/[-:]/g, "").replace(/T/, "-").slice(0, 15);
+  const suffix = crypto.randomUUID().slice(0, 4);
+  const backupName = `DebaPortal-backup-matriz-${now}-${suffix}.xlsx`;
+  const response = await fetchWithRetry(`${GRAPH_ROOT}/items/${encodeURIComponent(target.item.id)}/copy`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ parentReference: { driveId: target.driveId, id: target.folderId }, name: backupName }),
+  });
+  if (response.status !== 202) {
+    const failure = await response.json().catch(() => ({}));
+    throw new Error(`Nao foi possivel criar o backup no OneDrive (${response.status}, ${String(failure?.error?.code || "erro").replace(/[^a-z0-9_.-]/gi, "")}).`);
+  }
+  const location = response.headers.get("location");
+  if (!location) throw new Error("Microsoft nao informou como acompanhar o backup.");
+  const monitor = new URL(location);
+  const allowedMonitor = monitor.protocol === "https:" && (
+    monitor.hostname === "api.onedrive.com" || monitor.hostname.endsWith(".sharepoint.com")
+      || monitor.hostname.endsWith(".onedrive.com") || monitor.hostname.endsWith(".1drv.com")
+  );
+  if (!allowedMonitor) throw new Error("Destino de acompanhamento do backup nao autorizado.");
+  for (let attempt = 0; attempt < 24; attempt += 1) {
+    const statusResponse = await fetchWithRetry(monitor.toString(), {
+      cache: "no-store", headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+    });
+    const status = await statusResponse.json().catch(() => ({}));
+    if (statusResponse.ok && (status.status === "completed" || Number(status.percentageComplete ?? status.percentComplete) >= 100)) return backupName;
+    if (status.status === "failed" || (!statusResponse.ok && statusResponse.status !== 202)) {
+      throw new Error("A copia de seguranca do OneDrive falhou.");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1_250));
+  }
+  throw new Error("O backup do OneDrive nao terminou dentro do prazo.");
+}
+
+async function patchMatrixWorkbook(rows: MatrixPatchRow[]): Promise<Record<string, unknown>> {
+  const sanitized = sanitizeMatrixRows(rows);
+  const token = await graphToken(true);
+  const target = await resolveWorkbookTarget(token);
+  const backupName = await createWorkbookBackup(token, target);
+  try {
+    const itemId = encodeURIComponent(target.item.id);
+    const sheetName = encodeURIComponent("MATRIZ");
+    const used = await graphJson(
+      `${GRAPH_ROOT}/items/${itemId}/workbook/worksheets/${sheetName}/usedRange(valuesOnly=true)?%24select=values,rowIndex,columnIndex,rowCount,columnCount`, token,
+    );
+    const values = Array.isArray(used.values) ? used.values as unknown[][] : [];
+    const baseRow = Number(used.rowIndex || 0);
+    const baseColumn = Number(used.columnIndex || 0);
+    const headerOffset = values.findIndex((line) => Array.isArray(line) && line.some((value) => CODE_HEADERS.includes(normalizeHeader(value))));
+    if (headerOffset < 0) throw new Error("Cabecalho da aba MATRIZ nao reconhecido.");
+    const headers = (values[headerOffset] || []).map(normalizeHeader);
+    const codeColumn = headers.findIndex((header) => CODE_HEADERS.includes(header));
+    const fieldColumns = Object.fromEntries(Object.entries(MATRIX_FIELDS).map(([field, definition]) => [
+      field, headers.findIndex((header) => definition.aliases.includes(header)),
+    ]));
+    const sourceRows = new Map<string, number>();
+    for (let offset = headerOffset + 1; offset < values.length; offset += 1) {
+      const code = String(values[offset]?.[codeColumn] ?? "").trim().replace(/\.0+$/, "");
+      if (!code) continue;
+      if (sourceRows.has(code)) throw new Error(`Codigo duplicado na aba MATRIZ: ${code}.`);
+      sourceRows.set(code, offset);
+    }
+
+    const updates = sanitized.map((row) => {
+      const rowOffset = sourceRows.get(String(row.code));
+      if (rowOffset === undefined) throw new Error(`Codigo nao encontrado na aba MATRIZ: ${row.code}.`);
+      const fields = matrixFieldValues(row);
+      const targetCells = Object.entries(fields).map(([field, value]) => {
+        const column = Number(fieldColumns[field]);
+        if (column < 0) throw new Error(`Coluna ${MATRIX_FIELDS[field].label} nao encontrada na aba MATRIZ.`);
+        return { column, value };
+      });
+      const firstColumn = Math.min(...targetCells.map((cell) => cell.column));
+      const lastColumn = Math.max(...targetCells.map((cell) => cell.column));
+      const rowValues: (string | null)[] = Array(lastColumn - firstColumn + 1).fill(null);
+      for (const cell of targetCells) rowValues[cell.column - firstColumn] = cell.value;
+      const excelRow = baseRow + rowOffset + 1;
+      const address = `${excelColumn(baseColumn + firstColumn)}${excelRow}:${excelColumn(baseColumn + lastColumn)}${excelRow}`;
+      return { address, values: rowValues };
+    });
+
+    for (let start = 0; start < updates.length; start += 20) {
+      const chunk = updates.slice(start, start + 20);
+      const batchResponse = await fetchWithRetry("https://graph.microsoft.com/v1.0/$batch", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ requests: chunk.map((update, index) => ({
+          id: String(index + 1), method: "PATCH",
+          url: `/me/drive/items/${itemId}/workbook/worksheets/${sheetName}/range(address='${update.address}')`,
+          headers: { "Content-Type": "application/json" }, body: { values: [update.values] },
+        })) }),
+      });
+      const batch = await batchResponse.json().catch(() => ({}));
+      if (!batchResponse.ok || !Array.isArray(batch.responses)) throw new Error(`Microsoft recusou o lote de alteracoes (${batchResponse.status}).`);
+      const failed = batch.responses.find((entry: { status?: number }) => Number(entry.status) < 200 || Number(entry.status) >= 300);
+      if (failed) {
+        if (Number(failed.status) === 401 || Number(failed.status) === 403) throw new Error("Permissao de escrita ausente. Reconecte o OneDrive no painel.");
+        throw new Error(`Falha ao atualizar uma linha da matriz (${Number(failed.status) || 500}).`);
+      }
+    }
+    return { updated: true, rows_updated: updates.length, backup_name: backupName };
+  } catch (error) {
+    throw new Error(`${errorMessage(error)} Backup preservado: ${backupName}.`);
+  }
 }
 
 async function hasServiceRole(req: Request): Promise<boolean> {
@@ -264,6 +488,9 @@ Deno.serve(async (req) => {
     if (input.action === "connect_start") return jsonResponse(req, { data: await startMicrosoftConnection() });
     if (input.action === "connect_complete") {
       return jsonResponse(req, { data: await completeMicrosoftConnection(String(input.device_code || "")) });
+    }
+    if (input.action === "patch_matrix") {
+      return jsonResponse(req, { data: await patchMatrixWorkbook(input.rows || []) });
     }
     const photosOnly = input.action === "dispatch_photos";
 

@@ -424,6 +424,15 @@ class SupabaseApi {
     return data?.data || data;
   }
 
+  async patchMatrixOneDrive(rows) {
+    const { data, error } = await this.client.functions.invoke('sync-onedrive', {
+      body: { action: 'patch_matrix', rows }
+    });
+    if (error) throw await invocationError(error);
+    if (data?.error) throw new Error(data.error);
+    return data?.data || data;
+  }
+
   async startOneDriveConnection() {
     const { data, error } = await this.client.functions.invoke('sync-onedrive', { body: { action: 'connect_start' } });
     if (error) throw await invocationError(error);
@@ -611,6 +620,7 @@ class DemoApi {
   async inviteUser(email, fullName) { return { email, full_name: fullName, demo: true }; }
   async requestDriveSync() { return { queued: true, job_id: 'demo-sync', status: 'SOLICITADO' }; }
   async requestPhotoSync() { return { queued: true, job_id: 'demo-photos', status: 'SOLICITADO', photos_only: true }; }
+  async patchMatrixOneDrive(rows) { return { updated: true, rows_updated: rows.length, backup_name: 'DebaPortal-backup-matriz-demo.xlsx', demo: true }; }
   async getSyncJob() { return { id: 'demo-sync', status: 'CONCLUIDO', summary: { produtos: 5, precos: 5, estoque: 5 }, finished_at: new Date().toISOString() }; }
 }
 

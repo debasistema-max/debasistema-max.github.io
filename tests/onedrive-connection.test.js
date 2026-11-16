@@ -27,4 +27,21 @@ describe('reconexão segura do OneDrive', () => {
     assert.match(api, /response\.clone\(\)\.json\(\)/);
     assert.match(api, /throw await invocationError\(error\)/);
   });
+
+  it('atualiza somente a matriz configurada após criar backup', () => {
+    const syncFunction = readFileSync(new URL('../supabase/functions/sync-onedrive/index.ts', import.meta.url), 'utf8');
+    const main = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+    const api = readFileSync(new URL('../src/services/api.js', import.meta.url), 'utf8');
+    assert.match(syncFunction, /offline_access Files\.ReadWrite/);
+    assert.match(syncFunction, /input\.action === "patch_matrix"/);
+    assert.match(syncFunction, /rows\.length > 200/);
+    assert.match(syncFunction, /requiredEnv\("ONEDRIVE_FOLDER_PATH"\)/);
+    assert.match(syncFunction, /requiredEnv\("ONEDRIVE_WORKBOOK_NAME"\)/);
+    assert.match(syncFunction, /const backupName = await createWorkbookBackup\(token, target\)/);
+    assert.match(syncFunction, /workbook\/worksheets\/\$\{sheetName\}\/range/);
+    assert.ok(syncFunction.indexOf('await createWorkbookBackup(token, target)') < syncFunction.indexOf('https://graph.microsoft.com/v1.0/$batch'));
+    assert.match(api, /body: \{ action: 'patch_matrix', rows \}/);
+    assert.ok(main.indexOf('await api.patchMatrixOneDrive') < main.indexOf("await api.importRows('catalog', `partial-matrix:"));
+    assert.match(main, /Reconectar OneDrive/);
+  });
 });
