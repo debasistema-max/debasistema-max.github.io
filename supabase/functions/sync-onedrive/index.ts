@@ -302,27 +302,24 @@ async function createWorkbookBackup(token: string, target: { item: GraphItem; fo
     const failure = await response.json().catch(() => ({}));
     throw new Error(`Nao foi possivel criar o backup no OneDrive (${response.status}, ${String(failure?.error?.code || "erro").replace(/[^a-z0-9_.-]/gi, "")}).`);
   }
-  const location = response.headers.get("location");
-  if (!location) throw new Error("Microsoft nao informou como acompanhar o backup.");
-  const monitor = new URL(location);
-  const allowedMonitor = monitor.protocol === "https:" && (
-    monitor.hostname === "api.onedrive.com" || monitor.hostname === "onedrive.com"
-      || monitor.hostname === "my.microsoftpersonalcontent.com"
-      || monitor.hostname.endsWith(".sharepoint.com")
-      || monitor.hostname.endsWith(".onedrive.com") || monitor.hostname.endsWith(".1drv.com")
-  ) && (/\/monitor\//i.test(monitor.pathname) || /\/_api\/v2\.[01]\/monitor\//i.test(monitor.pathname));
-  if (!allowedMonitor) {
-    const monitorHost = monitor.hostname.replace(/[^a-z0-9.-]/gi, "");
-    throw new Error(`Destino de acompanhamento do backup nao autorizado (${monitorHost}).`);
-  }
+  const backupUrl = `${GRAPH_ROOT}/items/${encodeURIComponent(target.folderId)}:/${encodeURIComponent(backupName)}?%24select=id,name,size,file`;
   for (let attempt = 0; attempt < 24; attempt += 1) {
-    const statusResponse = await fetchWithRetry(monitor.toString(), {
-      cache: "no-store", headers: { Accept: "application/json" },
+    const statusResponse = await fetchWithRetry(backupUrl, {
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+        "Cache-Control": "no-cache, no-store",
+      },
     });
-    const status = await statusResponse.json().catch(() => ({}));
-    if (statusResponse.ok && (status.status === "completed" || Number(status.percentageComplete ?? status.percentComplete) >= 100)) return backupName;
-    if (status.status === "failed" || (!statusResponse.ok && statusResponse.status !== 202)) {
-      throw new Error("A copia de seguranca do OneDrive falhou.");
+    if (statusResponse.ok) {
+      const backup = await statusResponse.json().catch(() => ({}));
+      const expectedSize = Number(target.item.size || 0);
+      if (backup.name === backupName && backup.file
+        && Number(backup.size || 0) > 0
+        && (!expectedSize || Number(backup.size) === expectedSize)) return backupName;
+    } else if (statusResponse.status !== 404) {
+      throw new Error(`Nao foi possivel confirmar o backup no OneDrive (${statusResponse.status}).`);
     }
     await new Promise((resolve) => setTimeout(resolve, 1_250));
   }

@@ -38,9 +38,9 @@ describe('reconexão segura do OneDrive', () => {
     assert.match(syncFunction, /requiredEnv\("ONEDRIVE_FOLDER_PATH"\)/);
     assert.match(syncFunction, /requiredEnv\("ONEDRIVE_WORKBOOK_NAME"\)/);
     assert.match(syncFunction, /const backupName = await createWorkbookBackup\(token, target\)/);
-    assert.match(syncFunction, /monitor\.hostname === "onedrive\.com"/);
-    assert.match(syncFunction, /monitor\.hostname === "my\.microsoftpersonalcontent\.com"/);
-    assert.match(syncFunction, /\/\\\/monitor\\\//);
+    assert.match(syncFunction, /const backupUrl = `\$\{GRAPH_ROOT\}\/items\/\$\{encodeURIComponent\(target\.folderId\)\}:\/\$\{encodeURIComponent\(backupName\)\}/);
+    assert.match(syncFunction, /Number\(backup\.size\) === expectedSize/);
+    assert.doesNotMatch(syncFunction, /new URL\(location\)/);
     assert.match(syncFunction, /workbook\/worksheets\/\$\{sheetName\}\/range/);
     assert.ok(syncFunction.indexOf('await createWorkbookBackup(token, target)') < syncFunction.indexOf('https://graph.microsoft.com/v1.0/$batch'));
     assert.match(api, /body: \{ action: 'patch_matrix', rows \}/);
