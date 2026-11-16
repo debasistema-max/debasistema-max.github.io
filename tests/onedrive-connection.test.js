@@ -50,8 +50,13 @@ describe('reconexão segura do OneDrive', () => {
     assert.match(syncFunction, /const updates = sanitized\.flatMap/);
     assert.match(syncFunction, /sheet_rows_updated: updates\.length/);
     assert.match(syncFunction, /backup_folder: BACKUP_FOLDER_NAME/);
+    assert.match(syncFunction, /const RETRYABLE_BATCH_STATUS = new Set\(\[408, 409, 423, \.\.\.RETRYABLE_STATUS\]\)/);
+    assert.match(syncFunction, /for \(let attempt = 0; attempt < 4 && pending\.length; attempt \+= 1\)/);
+    assert.match(syncFunction, /retry\.push\(pending\[index\]\)/);
+    assert.match(syncFunction, /start \+= 10/);
+    assert.match(syncFunction, /await applyWorkbookUpdates\(token, itemId, sheetName, updates\.slice\(start, start \+ 10\)\)/);
     assert.match(syncFunction, /workbook\/worksheets\/\$\{sheetName\}\/range/);
-    assert.ok(syncFunction.indexOf('await createWorkbookBackup(token, target)') < syncFunction.indexOf('https://graph.microsoft.com/v1.0/$batch'));
+    assert.ok(syncFunction.indexOf('await createWorkbookBackup(token, target)') < syncFunction.indexOf('await applyWorkbookUpdates(token, itemId, sheetName'));
     assert.match(api, /body: \{ action: 'patch_matrix', rows \}/);
     assert.match(main, /driveResult\?\.backup_folder/);
     assert.ok(main.indexOf('await api.patchMatrixOneDrive') < main.indexOf("await api.importRows('catalog', `partial-matrix:"));

@@ -37,6 +37,7 @@ type SyncRequest = {
 const GRAPH_ROOT = "https://graph.microsoft.com/v1.0/me/drive";
 const BACKUP_FOLDER_NAME = "Backup DebaPortal";
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
+const RETRYABLE_BATCH_STATUS = new Set([408, 409, 423, ...RETRYABLE_STATUS]);
 
 function requiredEnv(name: string): string {
   const value = Deno.env.get(name)?.trim();
@@ -370,6 +371,48 @@ async function createWorkbookBackup(token: string, target: { item: GraphItem; fo
   throw new Error("O backup do OneDrive nao terminou dentro do prazo.");
 }
 
+type WorkbookUpdate = { address: string; values: (string | number | null)[] };
+
+async function applyWorkbookUpdates(
+  token: string,
+  itemId: string,
+  sheetName: string,
+  updates: WorkbookUpdate[],
+): Promise<void> {
+  let pending = [...updates];
+  let lastStatus = 500;
+  for (let attempt = 0; attempt < 4 && pending.length; attempt += 1) {
+    const batchResponse = await fetchWithRetry("https://graph.microsoft.com/v1.0/$batch", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ requests: pending.map((update, index) => ({
+        id: String(index + 1), method: "PATCH",
+        url: `/me/drive/items/${itemId}/workbook/worksheets/${sheetName}/range(address='${update.address}')`,
+        headers: { "Content-Type": "application/json" }, body: { values: [update.values] },
+      })) }),
+    });
+    const batch = await batchResponse.json().catch(() => ({}));
+    if (!batchResponse.ok || !Array.isArray(batch.responses)) {
+      throw new Error(`Microsoft recusou o lote de alteracoes (${batchResponse.status}).`);
+    }
+    const responses = new Map(batch.responses.map((entry: { id?: string; status?: number }) => [String(entry.id || ""), entry]));
+    const retry: WorkbookUpdate[] = [];
+    for (let index = 0; index < pending.length; index += 1) {
+      const status = Number(responses.get(String(index + 1))?.status || 500);
+      if (status >= 200 && status < 300) continue;
+      lastStatus = status;
+      if (status === 401 || status === 403) throw new Error("Permissao de escrita ausente. Reconecte o OneDrive no painel.");
+      if (!RETRYABLE_BATCH_STATUS.has(status)) throw new Error(`Falha ao atualizar uma linha da matriz (${status}).`);
+      retry.push(pending[index]);
+    }
+    pending = retry;
+    if (pending.length && attempt < 3) {
+      await new Promise((resolve) => setTimeout(resolve, Math.min(750 * (2 ** attempt), 6_000)));
+    }
+  }
+  if (pending.length) throw new Error(`Falha temporaria ao atualizar ${pending.length} linha(s) da matriz (${lastStatus}). Tente novamente.`);
+}
+
 async function patchMatrixWorkbook(rows: MatrixPatchRow[]): Promise<Record<string, unknown>> {
   const sanitized = sanitizeMatrixRows(rows);
   const token = await graphToken(true);
@@ -423,24 +466,8 @@ async function patchMatrixWorkbook(rows: MatrixPatchRow[]): Promise<Record<strin
       });
     });
 
-    for (let start = 0; start < updates.length; start += 20) {
-      const chunk = updates.slice(start, start + 20);
-      const batchResponse = await fetchWithRetry("https://graph.microsoft.com/v1.0/$batch", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ requests: chunk.map((update, index) => ({
-          id: String(index + 1), method: "PATCH",
-          url: `/me/drive/items/${itemId}/workbook/worksheets/${sheetName}/range(address='${update.address}')`,
-          headers: { "Content-Type": "application/json" }, body: { values: [update.values] },
-        })) }),
-      });
-      const batch = await batchResponse.json().catch(() => ({}));
-      if (!batchResponse.ok || !Array.isArray(batch.responses)) throw new Error(`Microsoft recusou o lote de alteracoes (${batchResponse.status}).`);
-      const failed = batch.responses.find((entry: { status?: number }) => Number(entry.status) < 200 || Number(entry.status) >= 300);
-      if (failed) {
-        if (Number(failed.status) === 401 || Number(failed.status) === 403) throw new Error("Permissao de escrita ausente. Reconecte o OneDrive no painel.");
-        throw new Error(`Falha ao atualizar uma linha da matriz (${Number(failed.status) || 500}).`);
-      }
+    for (let start = 0; start < updates.length; start += 10) {
+      await applyWorkbookUpdates(token, itemId, sheetName, updates.slice(start, start + 10));
     }
     return {
       updated: true,
