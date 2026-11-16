@@ -17,6 +17,7 @@
     "@supabase/supabase-js": "^2.57.4",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.9",
+    "pdfjs-dist": "^5.4.296",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {

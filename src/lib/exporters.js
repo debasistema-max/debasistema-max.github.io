@@ -245,6 +245,35 @@ export function exportSapValidationExcel(payload) {
   XLSX.writeFile(buildSapValidationWorkbook(payload), `conferencia-manual-sap-${date}.xlsx`, { compression: true, cellStyles: true });
 }
 
+export function buildSapValidationQuoteWorkbook({ items, context = {} }) {
+  const headers = ['Código', 'Descrição', 'Quantidade'];
+  const values = [
+    ['DebaPortal · Cotação para validação SAP'],
+    ['Identificação', context.requestId || '—', 'Destino', context.destinationState || '—', 'Origem', context.originCode || '—'],
+    ['Tabela', [context.tableCode, context.tableName].filter(Boolean).join(' · ') || '—', 'Gerada em', context.generatedAt || new Date().toLocaleString('pt-BR')],
+    [],
+    headers,
+    ...items.map((item) => [itemValue(item, 'code'), itemValue(item, 'description'), 1])
+  ];
+  const worksheet = XLSX.utils.aoa_to_sheet(values);
+  const headerStyle = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '0B1F3A' } }, alignment: { vertical: 'center' } };
+  worksheet.A1.s = { ...headerStyle, font: { ...headerStyle.font, sz: 18 } };
+  for (const column of ['A', 'B', 'C']) worksheet[`${column}5`].s = headerStyle;
+  worksheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }];
+  worksheet['!cols'] = [{ wch: 18 }, { wch: 55 }, { wch: 13 }, { wch: 12 }, { wch: 18 }, { wch: 12 }];
+  worksheet['!autofilter'] = { ref: `A5:C${Math.max(5, items.length + 5)}` };
+  worksheet['!freeze'] = { xSplit: 0, ySplit: 5, topLeftCell: 'A6', activePane: 'bottomLeft', state: 'frozen' };
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Cotação para SAP');
+  workbook.Props = { Title: 'DebaPortal - Cotação para validação SAP', Subject: 'Cotação para validação SAP', Company: 'DebaPortal' };
+  return workbook;
+}
+
+export function exportSapValidationQuoteExcel(payload) {
+  const requestId = safeFileName(payload.context?.requestId || new Date().toISOString().slice(0, 10));
+  XLSX.writeFile(buildSapValidationQuoteWorkbook(payload), `cotacao-validacao-${requestId}.xlsx`, { compression: true, cellStyles: true });
+}
+
 function drawCommercialHeader(doc, title, context, itemCount) {
   doc.setFillColor(11, 31, 58);
   doc.rect(0, 0, 297, 34, 'F');

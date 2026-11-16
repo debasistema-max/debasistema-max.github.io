@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildExcelWorkbook, buildPdfDocument, buildSapValidationWorkbook, commercialRows } from '../src/lib/exporters.js';
+import { buildExcelWorkbook, buildPdfDocument, buildSapValidationQuoteWorkbook, buildSapValidationWorkbook, commercialRows } from '../src/lib/exporters.js';
 
 const payload = {
   title: 'Lista comercial - completa',
@@ -126,5 +126,16 @@ test('planilha de conferência destaca entradas manuais e calcula divergências'
   assert.match(summary.B8.f, /COUNTIF/);
   assert.match(summary.C17.f, /COUNTIFS/);
   assert.deepEqual(workbook.SheetNames, ['Resumo', 'Conferência SAP']);
+  assert.equal(workbook.Props.Company, 'DebaPortal');
+});
+
+test('cotação de validação leva códigos e quantidade um para lançamento no SAP', () => {
+  const workbook = buildSapValidationQuoteWorkbook({
+    items: [{ code: 'ABC-1', description: 'Produto A' }, { code: 'ABC-2', description: 'Produto B' }],
+    context: { requestId: 'VAL-20261116-001', destinationState: 'PR', originCode: 'PR', tableCode: 'PR-PR' }
+  });
+  const sheet = workbook.Sheets['Cotação para SAP'];
+  assert.deepEqual(['A5', 'B5', 'C5'].map((cell) => sheet[cell].v), ['Código', 'Descrição', 'Quantidade']);
+  assert.deepEqual(['A6', 'B6', 'C6'].map((cell) => sheet[cell].v), ['ABC-1', 'Produto A', 1]);
   assert.equal(workbook.Props.Company, 'DebaPortal');
 });

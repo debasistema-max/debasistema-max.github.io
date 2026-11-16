@@ -11,6 +11,9 @@ const root = document.querySelector('#app');
 let pendingImport = null;
 let needsPasswordSetup = false;
 let photoZoom = 1;
+let sapValidationSession = null;
+let sapValidationResult = null;
+let sapValidationPaste = '';
 const photoCache = new Map();
 const COMMERCIAL_LINES = ['Leve', 'Pesada', 'Utilitário'];
 
@@ -502,6 +505,32 @@ function productsAdminPanel() {
   </section>`;
 }
 
+function sapStockDisplay(value) {
+  if (value === null || value === undefined || value === '') return 'Não informado';
+  const quantity = Number(value);
+  if (!Number.isFinite(quantity)) return 'Não informado';
+  return quantity >= 50 ? '+50' : integer(quantity);
+}
+
+function sapValidationResultPanel() {
+  if (!sapValidationResult) return '';
+  const { summary, rows, quoteNumber, source } = sapValidationResult;
+  const statusLabels = { OK: 'Correto', DIVERGENTE: 'Divergente', AUSENTE: 'Ausente', EXTRA: 'Extra' };
+  return `<section class="sap-validation-results" aria-live="polite">
+    <div class="sap-validation-result-heading"><div><h3>Resultado da validação</h3><p>${source === 'PDF' ? 'PDF' : 'Excel copiado'}${quoteNumber ? ` · Cotação SAP ${escapeHtml(quoteNumber)}` : ''}</p></div><div class="sap-result-summary"><span class="sap-result-pill sap-result-ok"><strong>${integer(summary.ok)}</strong> corretos</span><span class="sap-result-pill sap-result-warning"><strong>${integer(summary.divergent)}</strong> divergentes</span><span class="sap-result-pill sap-result-error"><strong>${integer(summary.missing)}</strong> ausentes</span>${summary.extra ? `<span class="sap-result-pill"><strong>${integer(summary.extra)}</strong> extras</span>` : ''}</div></div>
+    <div class="table-wrap"><table class="sap-validation-result-table"><thead><tr><th>Código</th><th>Portal</th><th>SAP</th><th>Estoque portal</th><th>Estoque SAP</th><th>Resultado</th></tr></thead><tbody>${rows.map((row) => `<tr><td><strong>${escapeHtml(row.code)}</strong><small>${escapeHtml(row.description || '')}</small></td><td>${row.portal && Number.isFinite(Number(row.portal.price)) ? money(row.portal.price) : '—'}</td><td>${row.sap && Number.isFinite(Number(row.sap.unitPriceFinal)) ? money(row.sap.unitPriceFinal) : '—'}</td><td>${row.portal ? sapStockDisplay(row.portal.stock_origin) : '—'}</td><td>${row.sap ? sapStockDisplay(row.sap.stock) : '—'}</td><td><span class="sap-status sap-status-${row.status.toLocaleLowerCase('pt-BR')}">${escapeHtml(statusLabels[row.status] || row.status)}</span>${row.issues?.length ? `<small>${escapeHtml(row.issues.join(' · '))}</small>` : ''}</td></tr>`).join('')}</tbody></table></div>
+  </section>`;
+}
+
+function sapValidationPanel(selectedTable) {
+  const session = sapValidationSession;
+  return `<section class="panel admin-card admin-wide sap-validation-card"><div class="section-title"><span>4</span><div><h2>Validação automática com SAP</h2><p>Crie a cotação de conferência e compare o retorno do SAP sem digitar os valores manualmente.</p></div></div>
+    <div class="sap-validation-context"><span>Destino <strong>${escapeHtml(state.destinationState || '—')}</strong></span><span>Origem <strong>${escapeHtml(state.originCode || '—')}</strong></span><span>Tabela <strong>${escapeHtml(selectedTable?.code || 'Não selecionada')}</strong></span></div>
+    <div class="sap-validation-create"><label class="sap-validation-option">Itens por categoria<input id="sap-sample-per-category" type="number" min="1" max="50" step="1" value="5"></label><p class="muted">O portal sorteia itens de cada categoria e baixa uma cotação com quantidade 1 para ser lançada no SAP.</p><button class="button button-primary" data-action="export-sap-validation" ${state.busy || !state.priceTableId ? 'disabled' : ''}>${state.busy ? 'Preparando…' : 'Criar cotação de validação'}</button></div>
+    ${session ? `<div class="sap-validation-session"><div class="sap-validation-session-heading"><div><strong>${escapeHtml(session.requestId)}</strong><span>${integer(session.items.length)} itens · criada em ${escapeHtml(session.context.generatedAt)}</span></div><button class="button button-secondary" data-action="download-sap-validation-quote">Baixar cotação novamente</button></div><div class="sap-validation-inputs"><label class="sap-validation-file"><strong>Anexar PDF do SAP</strong><span>Selecione a cotação salva em PDF.</span><input id="sap-quote-pdf" type="file" accept=".pdf,application/pdf" ${state.busy ? 'disabled' : ''}></label><div class="sap-validation-or" aria-hidden="true">ou</div><label class="sap-validation-paste"><strong>Colar do Excel</strong><span>Copie a tabela inteira, incluindo os cabeçalhos.</span><textarea id="sap-quote-paste" rows="7" placeholder="Cole aqui as células copiadas do Excel">${escapeHtml(sapValidationPaste)}</textarea><button class="button button-secondary" type="button" data-action="validate-sap-paste" ${state.busy ? 'disabled' : ''}>Validar dados colados</button></label></div><p class="sap-validation-privacy">O PDF e a colagem são lidos somente neste navegador e não são armazenados.</p>${sapValidationResultPanel()}</div>` : '<p class="muted">Crie uma cotação de validação para liberar o anexo do SAP.</p>'}
+  </section>`;
+}
+
 function renderAdmin() {
   if (state.profile?.role !== 'ADMIN') return '<div class="notice notice-error">Acesso permitido somente para administradores.</div>';
   const summary = state.adminSummary || { profiles: [], storage: [], branches: [] };
@@ -525,7 +554,7 @@ function renderAdmin() {
       <section class="panel admin-card"><div class="section-title"><span>1</span><div><h2>Importação manual</h2><p>XLSX, XLS ou CSV. O arquivo original não é enviado nem armazenado.</p></div></div><input id="import-file" type="file" accept=".xlsx,.xls,.csv"><div id="import-preview">${pendingImport ? `<div class="import-ready"><strong>${escapeHtml(pendingImport.fileName)}</strong><span>${integer(pendingImport.rows.length)} linhas · tipo ${escapeHtml(pendingImport.kind)}</span><button class="button button-primary" data-action="commit-import">Validar e importar</button></div>` : '<p class="muted">Selecione um arquivo para validar os cabeçalhos.</p>'}</div></section>
       <section class="panel admin-card"><div class="section-title"><span>2</span><div><h2>Catálogo online</h2><p>Planilha e fotos são sincronizadas somente quando um administrador solicitar.</p></div></div><p>Última atualização: <strong>${escapeHtml(formatDateTime(state.lastSync?.finished_at || state.lastSync?.started_at))}</strong></p>${syncStatus}<div class="admin-sync-actions"><button class="button button-primary" data-action="sync-drive" ${syncActive ? 'disabled' : ''}>${syncActive ? 'Sincronizando…' : 'Sincronizar tudo'}</button><button class="button button-secondary" data-action="sync-photos" ${syncActive ? 'disabled' : ''}>Atualizar fotos pelo site</button></div>${connectionMarkup}</section>
       ${syncHistoryPanel()}
-      <section class="panel admin-card sap-validation-card"><div class="section-title"><span>4</span><div><h2>Conferência manual SAP</h2><p>Compara preços e estoques em uma amostra aleatória de cada categoria.</p></div></div><div class="sap-validation-context"><span>Destino <strong>${escapeHtml(state.destinationState || '—')}</strong></span><span>Origem <strong>${escapeHtml(state.originCode || '—')}</strong></span><span>Tabela <strong>${escapeHtml(selectedTable?.code || 'Não selecionada')}</strong></span></div><label class="sap-validation-option">Itens por categoria<input id="sap-sample-per-category" type="number" min="1" max="50" step="1" value="5"></label><p class="muted">Serão sorteados até essa quantidade em cada categoria cadastrada, como Amortecedor, Caixa de direção, Bomba e Farol. A planilha terá resumo automático; preencha somente as células amarelas com os valores consultados no SAP.</p><button class="button button-primary" data-action="export-sap-validation" ${state.busy || !state.priceTableId ? 'disabled' : ''}>${state.busy ? 'Preparando…' : 'Gerar nova amostra'}</button></section>
+      ${sapValidationPanel(selectedTable)}
       <section class="panel admin-card"><div class="section-title"><span>5</span><div><h2>Armazenamento</h2><p>Monitoramento das tabelas estruturadas do DebaPortal.</p></div></div>${storageAlert}${summary.storage.length ? `<ul class="metric-list">${summary.storage.map((row) => `<li><span>${escapeHtml(row.relation || row.table_name)}</span><strong>${escapeHtml(row.pretty_size || `${row.bytes || 0} bytes`)}</strong></li>`).join('')}</ul>` : '<p class="muted">Resumo indisponível.</p>'}</section>
       <section class="panel admin-card"><div class="section-title"><span>6</span><div><h2>Filiais</h2><p>Cadastre origens antes das tabelas comerciais.</p></div></div><form id="branch-form" class="compact-form"><input name="code" maxlength="20" placeholder="Código (ex.: SP)" required><input name="name" maxlength="120" placeholder="Nome da filial" required><select name="state" required><option value="">UF</option>${stateOptions('')}</select><button class="button button-primary" type="submit">Adicionar filial</button></form><ul class="inline-list">${summary.branches.map((branch) => `<li><strong>${escapeHtml(branch.code)}</strong><span>${escapeHtml(branch.name)} · ${escapeHtml(branch.state)}</span></li>`).join('')}</ul></section>
       <section class="panel admin-card"><div class="section-title"><span>7</span><div><h2>Tabelas comerciais</h2><p>Destino e origem definem onde cada tabela pode ser usada.</p></div></div><form id="price-table-form" class="compact-form"><input name="code" maxlength="60" placeholder="Código" required><input name="name" maxlength="160" placeholder="Nome" required><input name="version" type="number" min="1" value="1" required><select name="destinationState"><option value="">Todos os destinos</option>${stateOptions('')}</select><select name="originBranchId"><option value="">Todas as origens</option>${summary.branches.map((branch) => `<option value="${branch.id}">${escapeHtml(branch.code)} · ${escapeHtml(branch.name)}</option>`).join('')}</select><input name="validFrom" type="date" value="${new Date().toISOString().slice(0, 10)}" required><button class="button button-primary" type="submit">Criar tabela</button></form><ul class="inline-list">${state.priceTables.map((table) => `<li><strong>${escapeHtml(table.code)} · v${table.version}</strong><span>${escapeHtml(table.name)} · ${escapeHtml(table.destination_state || 'Todos')}</span></li>`).join('')}</ul></section>
@@ -937,6 +966,8 @@ root.addEventListener('click', async (event) => {
   if (action === 'start-onedrive-connection') { await handleStartOneDriveConnection(); return; }
   if (action === 'complete-onedrive-connection') { await handleCompleteOneDriveConnection(); return; }
   if (action === 'export-sap-validation') { await handleSapValidationExport(); return; }
+  if (action === 'download-sap-validation-quote') { await downloadSapValidationQuote(); return; }
+  if (action === 'validate-sap-paste') { await handleSapPasteValidation(); return; }
   const profileButton = event.target.closest('[data-profile-id]');
   if (profileButton) {
     try {
@@ -951,9 +982,17 @@ root.addEventListener('dblclick', (event) => {
 });
 
 root.addEventListener('change', async (event) => {
+  if (event.target.id === 'sap-quote-pdf') {
+    const file = event.target.files?.[0];
+    if (file) await handleSapPdfValidation(file);
+    return;
+  }
   const contextKey = event.target.dataset.context;
   if (contextKey) {
     state[contextKey] = event.target.value;
+    sapValidationSession = null;
+    sapValidationResult = null;
+    sapValidationPaste = '';
     if (contextKey !== 'priceTableId') {
       const resolved = resolveCommercialContext(state.priceTables, state);
       state.originCode = resolved.originCode;
@@ -1008,6 +1047,7 @@ root.addEventListener('change', async (event) => {
 });
 
 root.addEventListener('input', (event) => {
+  if (event.target.id === 'sap-quote-paste') sapValidationPaste = event.target.value;
   const type = event.target.dataset.draft;
   const field = event.target.dataset.field;
   if (type && field) {
@@ -1129,25 +1169,79 @@ async function handleSapValidationExport() {
     const sample = sampleProductsByCategory(items, samplePerCategory);
     if (!sample.length) throw new Error('Nenhum produto ativo foi encontrado para a amostragem.');
     const selectedTable = state.priceTables.find((table) => table.id === state.priceTableId);
-    const { exportSapValidationExcel } = await import('./lib/exporters.js');
-    exportSapValidationExcel({
+    const now = new Date();
+    const requestId = `VAL-${now.toISOString().replace(/[-:]/g, '').slice(0, 15)}`;
+    sapValidationSession = {
+      requestId,
       items: sample,
       context: {
+        requestId,
         destinationState: state.destinationState,
         originCode: state.originCode,
         tableCode: selectedTable?.code || '',
         tableName: selectedTable?.name || '',
         updatedAt: formatDateTime(state.lastSync?.finished_at || state.lastSync?.started_at),
-        generatedAt: new Date().toLocaleString('pt-BR'),
+        generatedAt: now.toLocaleString('pt-BR'),
         samplePerCategory
       }
-    });
-    setToast(`${integer(sample.length)} item(ns) sorteado(s) para conferência manual.`, 'success');
+    };
+    sapValidationResult = null;
+    sapValidationPaste = '';
+    const { exportSapValidationQuoteExcel } = await import('./lib/exporters.js');
+    exportSapValidationQuoteExcel(sapValidationSession);
+    setToast(`Cotação de validação criada com ${integer(sample.length)} item(ns).`, 'success');
   } catch (error) {
-    setToast(error.message || 'Não foi possível gerar a conferência.', 'error');
+    setToast(error.message || 'Não foi possível criar a cotação de validação.', 'error');
   } finally {
     state.busy = false; updateView();
   }
+}
+
+async function downloadSapValidationQuote() {
+  if (!sapValidationSession) return;
+  try {
+    const { exportSapValidationQuoteExcel } = await import('./lib/exporters.js');
+    exportSapValidationQuoteExcel(sapValidationSession);
+    setToast('Cotação de validação baixada novamente.', 'success');
+  } catch (error) {
+    setToast(error.message || 'Não foi possível baixar a cotação.', 'error');
+  }
+  updateView();
+}
+
+async function applySapQuoteValidation(sapQuote) {
+  if (!sapValidationSession) throw new Error('Crie primeiro uma cotação de validação no portal.');
+  const { validateSapQuote } = await import('./lib/sap-quote-validation.js');
+  sapValidationResult = validateSapQuote(sapValidationSession.items, sapQuote);
+  const { ok, divergent, missing, extra } = sapValidationResult.summary;
+  const hasProblems = divergent + missing + extra > 0;
+  setToast(hasProblems
+    ? `${integer(ok)} correto(s) e ${integer(divergent + missing + extra)} item(ns) para revisar.`
+    : `Todos os ${integer(ok)} itens conferem com o SAP.`, hasProblems ? 'error' : 'success');
+}
+
+async function handleSapPdfValidation(file) {
+  state.busy = true; updateView();
+  try {
+    const { parseSapPdf } = await import('./lib/sap-pdf.js');
+    await applySapQuoteValidation(await parseSapPdf(file));
+  } catch (error) {
+    sapValidationResult = null;
+    setToast(error.message || 'Não foi possível ler a cotação SAP em PDF.', 'error');
+  } finally {
+    state.busy = false; updateView();
+  }
+}
+
+async function handleSapPasteValidation() {
+  try {
+    const { parseSapClipboard } = await import('./lib/sap-quote-validation.js');
+    await applySapQuoteValidation(parseSapClipboard(sapValidationPaste));
+  } catch (error) {
+    sapValidationResult = null;
+    setToast(error.message || 'Não foi possível interpretar os dados copiados do Excel.', 'error');
+  }
+  updateView();
 }
 
 async function handleSavedDocumentExport(id, format) {

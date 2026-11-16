@@ -297,6 +297,39 @@ tbody tr:last-child td { border-bottom: 0; }
 .sap-validation-context strong { color: var(--navy-900); }
 .sap-validation-option { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(100px, 140px); align-items: center; gap: 12px; margin: 4px 0 12px; color: var(--slate-700); font-size: .8rem; font-weight: 750; }
 .sap-validation-option input { min-width: 0; }
+.sap-validation-create { max-width: 720px; }
+.sap-validation-session { display: grid; gap: 16px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--slate-200); }
+.sap-validation-session-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.sap-validation-session-heading > div { display: grid; gap: 3px; }
+.sap-validation-session-heading strong { color: var(--navy-900); font-size: .92rem; }
+.sap-validation-session-heading span { color: var(--slate-500); font-size: .74rem; }
+.sap-validation-inputs { display: grid; grid-template-columns: minmax(220px, .8fr) auto minmax(320px, 1.2fr); align-items: stretch; gap: 14px; }
+.sap-validation-file, .sap-validation-paste { display: grid; align-content: start; gap: 7px; padding: 16px; border: 1px solid var(--slate-200); border-radius: 12px; background: var(--slate-50); }
+.sap-validation-file strong, .sap-validation-paste strong { color: var(--navy-900); font-size: .84rem; }
+.sap-validation-file span, .sap-validation-paste span { color: var(--slate-500); font-size: .72rem; }
+.sap-validation-file input { margin-top: 10px; max-width: 100%; }
+.sap-validation-paste textarea { width: 100%; min-height: 132px; resize: vertical; font: 500 .72rem/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.sap-validation-paste .button { justify-self: start; }
+.sap-validation-or { align-self: center; color: var(--slate-500); font-size: .72rem; font-weight: 800; text-transform: uppercase; }
+.sap-validation-privacy { margin: -4px 0 0; color: var(--slate-500); font-size: .7rem; }
+.sap-validation-results { display: grid; gap: 12px; margin-top: 4px; }
+.sap-validation-result-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.sap-validation-result-heading h3 { margin: 0; color: var(--navy-900); font-size: 1rem; }
+.sap-validation-result-heading p { margin: 3px 0 0; color: var(--slate-500); font-size: .72rem; }
+.sap-result-summary { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+.sap-result-pill { display: inline-flex; gap: 5px; padding: 6px 9px; border-radius: 999px; background: var(--slate-100); color: var(--slate-700); font-size: .7rem; }
+.sap-result-ok { background: #e8f7ef; color: #136c40; }
+.sap-result-warning { background: #fff5d9; color: #8a5b00; }
+.sap-result-error { background: #fdecec; color: #a52e2e; }
+.sap-validation-result-table { min-width: 850px; }
+.sap-validation-result-table td { vertical-align: top; }
+.sap-validation-result-table td:first-child { min-width: 190px; }
+.sap-validation-result-table td > small { display: block; margin-top: 4px; max-width: 260px; color: var(--slate-500); line-height: 1.35; }
+.sap-status { display: inline-flex; padding: 4px 7px; border-radius: 999px; background: var(--slate-100); color: var(--slate-700); font-size: .68rem; font-weight: 850; }
+.sap-status-ok { background: #e8f7ef; color: #136c40; }
+.sap-status-divergente { background: #fff5d9; color: #8a5b00; }
+.sap-status-ausente { background: #fdecec; color: #a52e2e; }
+.sap-status-extra { background: #e8eef8; color: #284d7a; }
 .import-ready { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; margin-top: 14px; border-radius: 10px; background: var(--slate-100); padding: 12px; }
 .import-ready strong { color: var(--navy-900); font-size: .82rem; }
 .import-ready span { color: var(--slate-500); font-size: .72rem; }
@@ -455,6 +488,10 @@ tbody tr:last-child td { border-bottom: 0; }
   .bulk-action-bar > div { display: grid; grid-template-columns: 1fr; }
   .sync-run-list { grid-template-columns: 1fr; }
   .sap-validation-option { grid-template-columns: 1fr; }
+  .sap-validation-session-heading, .sap-validation-result-heading { align-items: stretch; flex-direction: column; }
+  .sap-validation-inputs { grid-template-columns: 1fr; }
+  .sap-validation-or { justify-self: center; }
+  .sap-result-summary { justify-content: flex-start; }
   .sync-change-content { border: 0; overflow: visible; }
   .sync-change-heading { align-items: flex-start; flex-direction: column; border-radius: 10px; }
   .sync-change-table { min-width: 0; }
