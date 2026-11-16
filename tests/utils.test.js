@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { integer, safeFileName, stockLevel } from '../src/lib/utils.js';
+import { integer, safeFileName, stockLevel, stockQuantity } from '../src/lib/utils.js';
 
 describe('regras de apresentação', () => {
   it('aplica exatamente as três faixas de estoque', () => {
@@ -16,6 +16,11 @@ describe('regras de apresentação', () => {
     assert.equal(stockLevel(0).label, 'Indisponível');
     assert.equal(stockLevel(null).key, 'unknown');
     assert.equal(integer(null), '—');
+    assert.equal(stockQuantity(null), '—');
+    assert.equal(stockQuantity(0), '0');
+    assert.equal(stockQuantity(49), '49');
+    assert.equal(stockQuantity(50), '+50');
+    assert.equal(stockQuantity('100+'), '+50');
   });
 
   it('gera nome de arquivo neutro', () => {

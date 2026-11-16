@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { commercialApplicationValues, commercialYearValues, money, safeFileName, stockLevel } from './utils.js';
+import { commercialApplicationValues, commercialYearValues, money, safeFileName, stockLevel, stockQuantity } from './utils.js';
 
 function triggerDownload(blob, fileName) {
   const url = URL.createObjectURL(blob);
@@ -25,9 +25,9 @@ export function rowsForExport(items) {
     Aplicação: itemValue(item, 'applications', []).join('; '),
     Quantidade: item.quantity ?? '',
     'Preço unitário': Number(itemValue(item, 'price', 0)),
-    'Estoque PR': Number(itemValue(item, 'stock_pr', 0)),
-    'Estoque SP': Number(itemValue(item, 'stock_sp', 0)),
-    'Estoque origem': Number(itemValue(item, 'stock_origin', 0)),
+    'Estoque PR': stockQuantity(itemValue(item, 'stock_pr', null)),
+    'Estoque SP': stockQuantity(itemValue(item, 'stock_sp', null)),
+    'Estoque origem': stockQuantity(itemValue(item, 'stock_origin', null)),
     Total: item.quantity == null ? '' : Number(item.quantity) * Number(itemValue(item, 'price', 0)),
     Atualização: itemValue(item, 'updated_at')
   }));
@@ -48,8 +48,8 @@ export function commercialRows(items) {
       Aplicação: commercialApplicationValues(itemValue(item, 'applications', [])).join('; '),
       Ano: commercialYearValues(itemValue(item, 'years', []), itemValue(item, 'applications', [])).join('; '),
       Preço: itemValue(item, 'price', null),
-      'Estoque PR': itemValue(item, 'stock_pr', null),
-      'Estoque SP': itemValue(item, 'stock_sp', null),
+      'Estoque PR': stockQuantity(itemValue(item, 'stock_pr', null)),
+      'Estoque SP': stockQuantity(itemValue(item, 'stock_sp', null)),
       Disponibilidade: stockOrigin === null ? 'Sem dados' : stockLevel(stockOrigin).label
     };
   });

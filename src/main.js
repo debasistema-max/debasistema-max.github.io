@@ -5,7 +5,7 @@ import { formatCnpj, isValidCnpj, lookupCnpj } from './lib/cnpj.js';
 import { allowedOrigins, choosePriceTable, resolveCommercialContext } from './lib/commercial-context.js';
 import { normalizeFilterSelection, toggleFilterSelection } from './lib/catalog-filters.js';
 import { state, navigate, persistSessionState, setToast } from './state.js';
-import { STATES, commercialApplicationValues, commercialYearValues, escapeHtml, formatDateTime, integer, money, onlyDigits, stockLevel } from './lib/utils.js';
+import { STATES, commercialApplicationValues, commercialYearValues, escapeHtml, formatDateTime, integer, money, onlyDigits, stockLevel, stockQuantity } from './lib/utils.js';
 
 const root = document.querySelector('#app');
 let pendingImport = null;
@@ -261,7 +261,7 @@ function commercialListResults() {
   const custom = state.listMode === 'custom';
   const branchStock = (branch, quantity) => {
     const level = stockLevel(quantity);
-    const value = quantity === null || quantity === undefined ? '—' : integer(quantity);
+    const value = stockQuantity(quantity);
     const description = `${branch}: ${value} · ${level.label}`;
     return `<span class="branch-stock stock-${level.key}" title="${escapeHtml(description)}" aria-label="${escapeHtml(description)}"><i aria-hidden="true"></i><strong>${value}</strong></span>`;
   };
@@ -279,7 +279,7 @@ function commercialListResults() {
   }).join('');
   return `<section class="results-section commercial-list-results">
     <div class="results-meta"><span>${integer(state.productTotal)} item(ns)</span><span>Página ${state.productPage} de ${totalPages}</span></div>
-    <div class="stock-legend" aria-label="Legenda de disponibilidade"><span class="stock-high"><i></i>Disponível <small>50+</small></span><span class="stock-low"><i></i>Confirmar <small>1–49</small></span><span class="stock-none"><i></i>Indisponível <small>0</small></span></div>
+    <div class="stock-legend" aria-label="Legenda de disponibilidade"><span class="stock-high"><i></i>Disponível <small>+50</small></span><span class="stock-low"><i></i>Confirmar <small>1–49</small></span><span class="stock-none"><i></i>Indisponível <small>0</small></span></div>
     <div class="table-wrap"><table class="commercial-list-table"><thead><tr>${custom ? '<th class="list-check-cell">Incluir</th>' : ''}<th>Código</th><th>Descrição</th><th>Aplicação</th><th>Ano</th><th>Preço</th><th>PR</th><th>SP</th></tr></thead><tbody>${rows}</tbody></table></div>
     <div class="pagination"><button class="button button-secondary" data-page="${state.productPage - 1}" ${state.productPage <= 1 ? 'disabled' : ''}>Anterior</button><button class="button button-secondary" data-page="${state.productPage + 1}" ${state.productPage >= totalPages ? 'disabled' : ''}>Próxima</button></div>
   </section>`;
@@ -296,7 +296,7 @@ function productCard(product, mode, cartType) {
     <h3>${escapeHtml(product.description)}</h3>
     <p>${escapeHtml(product.applications.join(' · ') || 'Aplicação não informada')}</p>
     <div class="product-tags"><span>${escapeHtml(product.category || 'Sem categoria')}</span><span>${escapeHtml(product.product_line || 'Sem linha')}</span>${product.brand ? `<span>${escapeHtml(product.brand)}</span>` : ''}</div>
-    <div class="stock-grid"><div class="${state.originCode === 'PR' ? 'stock-selected' : ''}"><span>PR${state.originCode === 'PR' ? ' · envio' : ''}</span><strong>${integer(product.stock_pr)}</strong></div><div class="${state.originCode === 'SP' ? 'stock-selected' : ''}"><span>SP${state.originCode === 'SP' ? ' · envio' : ''}</span><strong>${integer(product.stock_sp)}</strong></div><div class="price ${product.price === null ? 'price-missing' : ''}"><span>Preço</span><strong>${price}</strong></div></div>
+    <div class="stock-grid"><div class="${state.originCode === 'PR' ? 'stock-selected' : ''}"><span>PR${state.originCode === 'PR' ? ' · envio' : ''}</span><strong>${stockQuantity(product.stock_pr)}</strong></div><div class="${state.originCode === 'SP' ? 'stock-selected' : ''}"><span>SP${state.originCode === 'SP' ? ' · envio' : ''}</span><strong>${stockQuantity(product.stock_sp)}</strong></div><div class="price ${product.price === null ? 'price-missing' : ''}"><span>Preço</span><strong>${price}</strong></div></div>
     ${mode === 'list' ? (state.listMode === 'custom' ? `<label class="list-product-select"><input type="checkbox" data-list-product="${product.id}" ${state.listSelection.has(product.id) ? 'checked' : ''}> Incluir na lista personalizada</label>` : '') : `<div class="product-actions">${mode === 'item' ? `<button class="button button-secondary" data-add-product="${product.id}" data-cart="quotation">+ Cotação</button><button class="button button-primary" data-add-product="${product.id}" data-cart="order">+ Pedido</button>` : `<button class="button button-primary button-full" data-add-product="${product.id}" data-cart="${cartType}">Adicionar</button>`}</div>`}
   </article>`;
 }
@@ -388,7 +388,7 @@ function renderDocumentBuilder(type) {
 
 function cartMarkup(type, cart) {
   if (!cart.length) return '<div class="empty-cart">Adicione o primeiro item pela busca.</div>';
-  return `<div class="cart-list">${cart.map((item) => `<div class="cart-item"><div><strong>${escapeHtml(item.product.code)}</strong><span>${escapeHtml(item.product.description)}</span><small>${item.product.price === null ? 'Sem preço' : `${money(item.product.price)} por unidade`} · ${escapeHtml(state.originCode)}: ${integer(item.product.stock_origin)}</small></div><label>Qtd.<input type="number" min="1" step="1" value="${item.quantity}" data-cart-quantity="${item.product.id}" data-cart="${type}"></label><button class="remove-button" type="button" data-remove-product="${item.product.id}" data-cart="${type}" aria-label="Remover">×</button></div>`).join('')}</div>`;
+  return `<div class="cart-list">${cart.map((item) => `<div class="cart-item"><div><strong>${escapeHtml(item.product.code)}</strong><span>${escapeHtml(item.product.description)}</span><small>${item.product.price === null ? 'Sem preço' : `${money(item.product.price)} por unidade`} · ${escapeHtml(state.originCode)}: ${stockQuantity(item.product.stock_origin)}</small></div><label>Qtd.<input type="number" min="1" step="1" value="${item.quantity}" data-cart-quantity="${item.product.id}" data-cart="${type}"></label><button class="remove-button" type="button" data-remove-product="${item.product.id}" data-cart="${type}" aria-label="Remover">×</button></div>`).join('')}</div>`;
 }
 
 function renderLists() {

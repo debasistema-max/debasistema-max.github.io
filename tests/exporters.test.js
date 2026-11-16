@@ -27,6 +27,18 @@ test('lista comercial separa aplicação e ano e omite atualização', () => {
   assert.equal(Object.values(sheet).some((cell) => cell?.v === 'Atualização'), false);
 });
 
+test('lista comercial exibe +50 quando o estoque atualizado atinge o limite', () => {
+  const item = { ...payload.items[0], stock_pr: 50, stock_sp: 49, stock_origin: 50 };
+  const [row] = commercialRows([item]);
+  assert.equal(row['Estoque PR'], '+50');
+  assert.equal(row['Estoque SP'], '49');
+
+  const workbook = buildExcelWorkbook({ ...payload, items: [item] });
+  const sheet = workbook.Sheets['Lista comercial'];
+  assert.equal(sheet.F6.v, '+50');
+  assert.equal(sheet.G6.v, '49');
+});
+
 test('lista comercial remove ano e grafias repetidas da aplicação', () => {
   const [row] = commercialRows([{
     code: 'ABC-2',

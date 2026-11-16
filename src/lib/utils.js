@@ -25,6 +25,13 @@ export function integer(value) {
   return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 }).format(Number(value || 0));
 }
 
+export function stockQuantity(value) {
+  if (value === null || value === undefined || value === '') return '—';
+  const numeric = Number(String(value).replaceAll('+', '').replace(',', '.'));
+  if (!Number.isFinite(numeric)) return String(value);
+  return numeric >= 50 ? '+50' : integer(numeric);
+}
+
 export function formatDateTime(value) {
   if (!value) return 'Não informado';
   const date = new Date(value);
