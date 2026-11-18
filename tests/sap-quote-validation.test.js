@@ -20,6 +20,22 @@ test('lê a tabela copiada do Excel com estoque e preço final', () => {
   });
 });
 
+test('aceita relatório SAP sem número da linha e com quantidade vazia', () => {
+  const pasted = [
+    'codigo\tDescrição\tDisp. Geral\tDisp. Venda\tQtd. Auth. Pend.\tUM\tQtde\tPr.Unit.\t\tPr.Após Desc.\tTotal Após Desc.\tICMS-ST\tIPI\tDesonerado\tTotal c/ Imp.\tPr.Unit.(c/i)',
+    `1270862112\tRETROVISOR LE ELET. (P/PINT.) NI. VRS. '15-21\t0\t0\t0\tUN\t\t\t\t\t235,8\t0\t0\t0\t235,8\t235,8`,
+    `1275522130\tRETROVISOR LE RET.CRM. C/LED. T.HLX '15-17\t0\t0\t0\tUN\t\t\t\t\t410,6\t0\t0\t0\t410,6\t410,6`
+  ].join('\n');
+  const result = parseSapClipboard(pasted);
+  assert.equal(result.items.length, 2);
+  assert.deepEqual(result.items[0], {
+    code: '1270862112', description: `RETROVISOR LE ELET. (P/PINT.) NI. VRS. '15-21`, quantity: 1, stock: 0,
+    unitPriceBase: null, unitPriceFinal: 235.8, source: 'EXCEL'
+  });
+  assert.equal(result.items[1].quantity, 1);
+  assert.equal(result.items[1].unitPriceFinal, 410.6);
+});
+
 test('lê as colunas posicionais do PDF de cotação SAP', () => {
   const item = (x, y, str) => ({ str, transform: [1, 0, 0, 1, x, y] });
   const page = [

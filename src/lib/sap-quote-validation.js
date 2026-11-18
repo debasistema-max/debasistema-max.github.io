@@ -51,7 +51,8 @@ export function parseSapClipboard(text) {
 
   const items = rows.slice(headerIndex + 1).map((row) => {
     const code = normalizedCode(row[codeIndex]);
-    const quantity = sapNumber(row[quantityIndex]);
+    const parsedQuantity = sapNumber(row[quantityIndex]);
+    const quantity = parsedQuantity ?? 1;
     const totalWithTax = totalWithTaxIndex >= 0 ? sapNumber(row[totalWithTaxIndex]) : null;
     const unitPriceFinal = finalPriceIndex >= 0
       ? sapNumber(row[finalPriceIndex])
@@ -65,7 +66,7 @@ export function parseSapClipboard(text) {
       unitPriceFinal,
       source: 'EXCEL'
     };
-  }).filter((item) => item.code && item.quantity !== null);
+  }).filter((item) => item.code && item.unitPriceFinal !== null);
   if (!items.length) throw new Error('Nenhum item válido foi encontrado na colagem do Excel.');
   return { quoteNumber: '', items, source: 'EXCEL' };
 }
