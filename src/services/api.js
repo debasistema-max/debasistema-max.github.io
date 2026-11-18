@@ -336,6 +336,27 @@ class SupabaseApi {
     return Number(data || 0);
   }
 
+  async setProductsActiveByCodes(productCodes, active) {
+    const codes = [...new Set((productCodes || []).map((code) => String(code).trim().toLocaleUpperCase('pt-BR')).filter(Boolean))];
+    if (!codes.length || codes.length > 500) throw new Error('Informe entre 1 e 500 códigos.');
+    const products = [];
+    for (let start = 0; start < codes.length; start += 100) {
+      const chunk = codes.slice(start, start + 100);
+      const { data, error } = await this.client.from('products').select('id,code,active').in('code', chunk);
+      if (error) throw error;
+      products.push(...(data || []));
+    }
+    const foundCodes = new Set(products.map((product) => String(product.code).toLocaleUpperCase('pt-BR')));
+    const missing = codes.filter((code) => !foundCodes.has(code));
+    if (missing.length) {
+      const sample = missing.slice(0, 20).join(', ');
+      throw new Error(`Código(s) não encontrado(s): ${sample}${missing.length > 20 ? ` e mais ${missing.length - 20}` : ''}. Nenhum item foi alterado.`);
+    }
+    const unavailable = products.filter((product) => !product.active).map((product) => product.code);
+    if (unavailable.length) throw new Error(`Código(s) fora do catálogo atual: ${unavailable.slice(0, 20).join(', ')}. Nenhum item foi alterado.`);
+    return this.setProductsActive(products.map((product) => product.id), active);
+  }
+
   async listSyncRuns(limit = 12) {
     const { data, error } = await this.client.rpc('admin_list_sync_runs', { max_runs: Number(limit || 12) });
     if (error) throw error;
@@ -609,6 +630,14 @@ class DemoApi {
     const selected = new Set(productIds || []);
     demoProducts.forEach((product) => { if (selected.has(product.id)) product.admin_inactive = !active; });
     return selected.size;
+  }
+  async setProductsActiveByCodes(productCodes, active) {
+    const codes = [...new Set((productCodes || []).map((code) => String(code).trim().toLocaleUpperCase('pt-BR')).filter(Boolean))];
+    if (!codes.length || codes.length > 500) throw new Error('Informe entre 1 e 500 códigos.');
+    const byCode = new Map(demoProducts.map((product) => [String(product.code).toLocaleUpperCase('pt-BR'), product]));
+    const missing = codes.filter((code) => !byCode.has(code));
+    if (missing.length) throw new Error(`Código(s) não encontrado(s): ${missing.join(', ')}. Nenhum item foi alterado.`);
+    return this.setProductsActive(codes.map((code) => byCode.get(code).id), active);
   }
   async listSyncRuns() {
     return [{

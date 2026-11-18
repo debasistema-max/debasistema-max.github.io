@@ -4,6 +4,7 @@ import { config, hasSupabaseConfig } from './config.js';
 import { formatCnpj, isValidCnpj, lookupCnpj } from './lib/cnpj.js';
 import { allowedOrigins, choosePriceTable, resolveCommercialContext } from './lib/commercial-context.js';
 import { normalizeFilterSelection, toggleFilterSelection } from './lib/catalog-filters.js';
+import { parseProductCodes } from './lib/product-codes.js';
 import { state, navigate, persistSessionState, setToast } from './state.js';
 import { STATES, commercialApplicationValues, commercialYearValues, escapeHtml, formatDateTime, integer, money, onlyDigits, stockLevel, stockQuantity } from './lib/utils.js';
 
@@ -16,6 +17,7 @@ let sapValidationSession = null;
 let sapValidationResult = null;
 let sapValidationPaste = '';
 let matrixPatchPaste = '';
+let adminProductCodes = '';
 const photoCache = new Map();
 const COMMERCIAL_LINES = ['Leve', 'Pesada', 'Utilitário'];
 
@@ -503,6 +505,7 @@ function productsAdminPanel() {
     ? `<div class="table-wrap"><table class="admin-products-table"><thead><tr><th></th><th>Código</th><th>Descrição</th><th>Categoria</th><th>Linha</th><th>Marca</th><th>Situação</th></tr></thead><tbody>${rows}</tbody></table></div>`
     : `<div class="empty-state"><strong>Nenhum produto ${inactive ? 'inativo' : 'ativo'} encontrado</strong><span>Ajuste a pesquisa ou altere a visualização.</span></div>`;
   return `<section class="panel admin-card admin-wide"><div class="section-title"><span>8</span><div><h2>Ativação de produtos</h2><p>Selecione vários itens para ocultá-los do portal ou reativá-los. A escolha é preservada nas próximas sincronizações.</p></div></div>
+    <div class="admin-code-bulk"><div class="admin-code-copy"><strong>Colar códigos</strong><span>Cole uma coluna do Excel ou códigos separados por linha, espaço, vírgula ou ponto e vírgula.</span><span>A operação só será executada se todos os códigos forem encontrados.</span></div><textarea id="admin-product-codes" rows="5" placeholder="6111032201&#10;6111032202">${escapeHtml(adminProductCodes)}</textarea><div class="admin-code-actions"><small>Máximo de 500 códigos por operação.</small><div><button class="button button-danger button-small" type="button" data-action="set-products-by-code" data-active="false" ${state.busy || !adminProductCodes.trim() ? 'disabled' : ''}>Inativar códigos</button><button class="button button-primary button-small" type="button" data-action="set-products-by-code" data-active="true" ${state.busy || !adminProductCodes.trim() ? 'disabled' : ''}>Reativar códigos</button></div></div></div>
     <form id="admin-product-search-form" class="admin-product-search"><input name="query" value="${escapeHtml(catalog.query)}" placeholder="Pesquisar por código ou descrição"><select name="status"><option value="ATIVOS" ${inactive ? '' : 'selected'}>Itens ativos</option><option value="INATIVOS" ${inactive ? 'selected' : ''}>Itens inativos</option></select><button class="button button-secondary" type="submit">Pesquisar</button></form>
     <div class="bulk-action-bar"><span><strong>${integer(selectedCount)}</strong> selecionado(s) de ${integer(catalog.total)} · máximo 500</span><div><button class="button button-secondary button-small" type="button" data-action="select-admin-page" ${catalog.items.length ? '' : 'disabled'}>Selecionar esta página</button><button class="button button-ghost button-small" type="button" data-action="clear-admin-selection" ${selectedCount ? '' : 'disabled'}>Limpar</button><button class="button ${inactive ? 'button-primary' : 'button-danger'} button-small" type="button" data-action="toggle-admin-products" ${selectedCount ? '' : 'disabled'}>${inactive ? 'Reativar selecionados' : 'Inativar selecionados'}</button></div></div>
     ${table}
@@ -887,6 +890,37 @@ root.addEventListener('click', async (event) => {
     }
     return;
   }
+  if (action === 'set-products-by-code') {
+    const button = event.target.closest('[data-active]');
+    const activating = button?.dataset.active === 'true';
+    const verb = activating ? 'reativar' : 'inativar';
+    let codes;
+    try {
+      codes = parseProductCodes(adminProductCodes);
+    } catch (error) {
+      setToast(error.message, 'error'); updateView(); return;
+    }
+    if (!confirm(`Deseja ${verb} ${codes.length} produto(s) pelos códigos colados?`)) return;
+    state.busy = true; updateView();
+    try {
+      const changed = await api.setProductsActiveByCodes(codes, activating);
+      adminProductCodes = '';
+      state.adminCatalog.selection.clear();
+      state.adminCatalog.query = '';
+      state.adminCatalog.status = activating ? 'ATIVOS' : 'INATIVOS';
+      state.adminCatalog.page = 1;
+      const [catalogOptions] = await Promise.all([
+        api.getCatalogFilterOptions(), loadAdminProducts(false), refreshProducts(false), revalidateCarts(false)
+      ]);
+      applyCatalogOptions(catalogOptions);
+      setToast(`${changed} produto(s) ${activating ? 'reativado(s)' : 'inativado(s)'} pelos códigos colados.`, 'success');
+    } catch (error) {
+      setToast(error.message || `Não foi possível ${verb} os produtos.`, 'error');
+    } finally {
+      state.busy = false; updateView();
+    }
+    return;
+  }
   if (action === 'clear-list-selection') { state.listSelection.clear(); updateView(); return; }
   if (action === 'clear-multi-filter') {
     const filter = event.target.closest('[data-filter-name]').dataset.filterName;
@@ -1085,6 +1119,12 @@ root.addEventListener('change', async (event) => {
 
 root.addEventListener('input', (event) => {
   if (event.target.id === 'sap-quote-paste') sapValidationPaste = event.target.value;
+  if (event.target.id === 'admin-product-codes') {
+    adminProductCodes = event.target.value;
+    root.querySelectorAll('[data-action="set-products-by-code"]').forEach((button) => {
+      button.disabled = state.busy || !adminProductCodes.trim();
+    });
+  }
   if (event.target.id === 'matrix-patch-paste') {
     matrixPatchPaste = event.target.value;
     const prepareButton = root.querySelector('[data-action="prepare-matrix-paste"]');

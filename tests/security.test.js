@@ -145,8 +145,14 @@ describe('contratos de autorização', () => {
     assert.match(main, /data-admin-product/);
     assert.match(main, /Inativar selecionados/);
     assert.match(main, /Reativar selecionados/);
+    assert.match(main, /id="admin-product-codes"/);
+    assert.match(main, /data-action="set-products-by-code"/);
+    assert.match(main, /Inativar códigos/);
+    assert.match(main, /Reativar códigos/);
     assert.match(api, /admin_list_products/);
     assert.match(api, /admin_set_products_active/);
+    assert.match(api, /setProductsActiveByCodes/);
+    assert.match(api, /from\('products'\)\.select\('id,code,active'\)/);
     assert.match(api, /\.eq\('admin_inactive', false\)/);
     const imageFunction = readFileSync(new URL('../supabase/functions/product-image/index.ts', import.meta.url), 'utf8');
     assert.match(imageFunction, /\.eq\("admin_inactive", false\)/);
