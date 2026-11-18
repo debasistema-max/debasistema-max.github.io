@@ -34,8 +34,9 @@ test('lista comercial separa aplicação e ano e omite atualização', () => {
 
 test('salva listas comerciais com a data no nome do arquivo', () => {
   const date = new Date(2026, 10, 18, 23, 45);
-  assert.equal(exportFileName(payload, 'xlsx', date), 'lista-comercial-completa-18-11-2026.xlsx');
-  assert.equal(exportFileName(payload, 'pdf', date), 'lista-comercial-completa-18-11-2026.pdf');
+  assert.equal(exportFileName(payload, 'xlsx', date), 'lista-pr-sc-18-11-2026.xlsx');
+  assert.equal(exportFileName(payload, 'pdf', date), 'lista-pr-sc-18-11-2026.pdf');
+  assert.equal(exportFileName({ ...payload, title: 'Lista comercial - Faróis + Leve + Marca A + disponíveis' }, 'xlsx', date), 'lista-pr-sc-18-11-2026.xlsx');
   assert.equal(exportFileName({ title: 'Pedido' }, 'pdf', date), 'pedido.pdf');
 });
 

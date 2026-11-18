@@ -21,7 +21,10 @@ function localDateStamp(date = new Date()) {
 }
 
 export function exportFileName(payload, extension, date = new Date()) {
-  const baseName = safeFileName(payload.title).replace(/-+/g, '-');
+  const routeCode = payload.context?.routeCode
+    || [payload.context?.originCode, payload.context?.destinationState].filter(Boolean).join('-');
+  const shortListName = routeCode ? `lista-${routeCode}` : 'lista-comercial';
+  const baseName = safeFileName(payload.variant === 'commercial-list' ? shortListName : payload.title).replace(/-+/g, '-');
   const datedName = payload.variant === 'commercial-list' ? `${baseName}-${localDateStamp(date)}` : baseName;
   return `${datedName}.${extension}`;
 }
