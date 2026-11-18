@@ -14,6 +14,18 @@ function triggerDownload(blob, fileName) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function localDateStamp(date = new Date()) {
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  return `${day}-${month}-${date.getFullYear()}`;
+}
+
+export function exportFileName(payload, extension, date = new Date()) {
+  const baseName = safeFileName(payload.title).replace(/-+/g, '-');
+  const datedName = payload.variant === 'commercial-list' ? `${baseName}-${localDateStamp(date)}` : baseName;
+  return `${datedName}.${extension}`;
+}
+
 function itemValue(item, key, fallback = '') {
   return item.product?.[key] ?? item[key] ?? fallback;
 }
@@ -107,7 +119,7 @@ export function buildExcelWorkbook({ title, items, context = {}, variant = 'docu
 }
 
 export function exportExcel(payload) {
-  XLSX.writeFile(buildExcelWorkbook(payload), `${safeFileName(payload.title)}.xlsx`, { compression: true, cellStyles: true });
+  XLSX.writeFile(buildExcelWorkbook(payload), exportFileName(payload, 'xlsx'), { compression: true, cellStyles: true });
 }
 
 export function buildSapValidationWorkbook({ items, context = {} }) {
@@ -374,5 +386,5 @@ export function buildPdfDocument({ title, items, context = {}, customer = null, 
 }
 
 export function exportPdf(payload) {
-  triggerDownload(buildPdfDocument(payload).output('blob'), `${safeFileName(payload.title)}.pdf`);
+  triggerDownload(buildPdfDocument(payload).output('blob'), exportFileName(payload, 'pdf'));
 }

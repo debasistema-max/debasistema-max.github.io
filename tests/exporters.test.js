@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildExcelWorkbook, buildPdfDocument, buildSapValidationQuoteWorkbook, buildSapValidationWorkbook, commercialRows } from '../src/lib/exporters.js';
+import { buildExcelWorkbook, buildPdfDocument, buildSapValidationQuoteWorkbook, buildSapValidationWorkbook, commercialRows, exportFileName } from '../src/lib/exporters.js';
 
 const payload = {
   title: 'Lista comercial - completa',
@@ -30,6 +30,13 @@ test('lista comercial separa aplicação e ano e omite atualização', () => {
   assert.equal(sheet.H3.v, 'CONFIRMAR');
   assert.equal(sheet.I3.v, '8');
   assert.equal(Object.values(sheet).some((cell) => cell?.v === 'Atualização'), false);
+});
+
+test('salva listas comerciais com a data no nome do arquivo', () => {
+  const date = new Date(2026, 10, 18, 23, 45);
+  assert.equal(exportFileName(payload, 'xlsx', date), 'lista-comercial-completa-18-11-2026.xlsx');
+  assert.equal(exportFileName(payload, 'pdf', date), 'lista-comercial-completa-18-11-2026.pdf');
+  assert.equal(exportFileName({ title: 'Pedido' }, 'pdf', date), 'pedido.pdf');
 });
 
 test('lista comercial exibe +50 quando o estoque atualizado atinge o limite', () => {
