@@ -45,6 +45,7 @@ type SyncRequest = {
 
 const GRAPH_ROOT = "https://graph.microsoft.com/v1.0/me/drive";
 const BACKUP_FOLDER_NAME = "Backup DebaPortal";
+const MATRIX_PATCH_WRITE_ENABLED = false;
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 const RETRYABLE_BATCH_STATUS = new Set([408, 409, 423, ...RETRYABLE_STATUS]);
 
@@ -776,6 +777,9 @@ async function patchMatrixWorkbook(rows: MatrixPatchRow[]): Promise<Record<strin
 }
 
 async function queueMatrixPatch(userId: string, rows: MatrixPatchRow[]): Promise<Record<string, unknown>> {
+  if (!MATRIX_PATCH_WRITE_ENABLED) {
+    throw new Error("Atualizacao da MATRIZ temporariamente suspensa para proteger a planilha. Restaure a versao anterior no OneDrive.");
+  }
   const sanitized = sanitizeMatrixRows(rows);
   const admin = createClient(requiredEnv("SUPABASE_URL"), requiredEnv("SUPABASE_SERVICE_ROLE_KEY"), {
     auth: { persistSession: false, autoRefreshToken: false },
