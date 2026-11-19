@@ -1389,6 +1389,17 @@ async function handleMatrixPatch(updateOneDrive = false) {
   try {
     if (pendingMatrixPatch.hasBasePrice && !updateOneDrive) throw new Error('O preço base precisa ser atualizado na MATRIZ do OneDrive.');
     driveResult = updateOneDrive ? await api.patchMatrixOneDrive(pendingMatrixPatch.driveRows) : null;
+    if (driveResult?.queued && driveResult?.job_id) {
+      const jobId = driveResult.job_id;
+      pendingMatrixPatch = null;
+      matrixPatchPaste = '';
+      setToast('Atualização da MATRIZ solicitada. O processamento continuará em segundo plano.', 'success');
+      void pollDriveSync(jobId).catch((error) => {
+        setToast(error.message || 'Não foi possível acompanhar a atualização da MATRIZ.', 'error');
+        updateView();
+      });
+      return;
+    }
     const result = await api.importRows('catalog', `partial-matrix:${pendingMatrixPatch.fileName}`, pendingMatrixPatch.mergedRows);
     if (result?.ok === false) throw new Error(result.error || 'A atualização parcial foi rejeitada.');
     const applied = result.rows_applied ?? result.accepted ?? pendingMatrixPatch.mergedRows.length;
@@ -1484,7 +1495,13 @@ async function pollDriveSync(jobId) {
       clearPhotoCache();
       await refreshProducts(false);
       if (state.route === 'admin') await loadSyncHistory(false);
-      setToast('Sincronização concluída.', 'success');
+      const matrixPatch = job.summary?.operation === 'MATRIX_PATCH';
+      const backupPath = job.summary?.backup_folder && job.summary?.backup_name
+        ? `${job.summary.backup_folder}/${job.summary.backup_name}`
+        : job.summary?.backup_name;
+      setToast(matrixPatch
+        ? `MATRIZ atualizada: ${integer(job.summary?.rows_updated || 0)} item(ns), ${integer(job.summary?.rows_added || 0)} novo(s).${backupPath ? ` Backup: ${backupPath}.` : ''}`
+        : 'Sincronização concluída.', 'success');
       updateView();
       return;
     }

@@ -36,7 +36,7 @@ type MatrixPatchRow = {
   };
 };
 type SyncRequest = {
-  action?: "dispatch" | "dispatch_photos" | "check" | "download" | "connect_start" | "connect_complete" | "patch_matrix";
+  action?: "dispatch" | "dispatch_photos" | "check" | "download" | "prepare_matrix_upload" | "connect_start" | "connect_complete" | "patch_matrix";
   job_id?: string;
   retry_failed?: boolean;
   device_code?: string;
@@ -775,6 +775,56 @@ async function patchMatrixWorkbook(rows: MatrixPatchRow[]): Promise<Record<strin
   }
 }
 
+async function queueMatrixPatch(userId: string, rows: MatrixPatchRow[]): Promise<Record<string, unknown>> {
+  const sanitized = sanitizeMatrixRows(rows);
+  const admin = createClient(requiredEnv("SUPABASE_URL"), requiredEnv("SUPABASE_SERVICE_ROLE_KEY"), {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data: activeJob, error: activeError } = await admin.from("sync_jobs")
+    .select("id,status").in("status", ["SOLICITADO", "EM_EXECUCAO"]).order("requested_at", { ascending: false }).limit(1).maybeSingle();
+  if (activeError) throw activeError;
+  if (activeJob) throw new Error("Ja existe uma atualizacao em andamento. Aguarde a conclusao.");
+
+  const token = await graphToken();
+  const item = await resolveWorkbook(token);
+  if ((item.size ?? 0) <= 0 || (item.size ?? 0) > 20_000_000) throw new Error("Arquivo fora do limite permitido.");
+  const { data: job, error: insertError } = await admin.from("sync_jobs").insert({
+    requested_by: userId,
+    status: "SOLICITADO",
+    source_size: item.size,
+    source_modified: item.lastModifiedDateTime ?? null,
+    summary: { operation: "MATRIX_PATCH", rows: sanitized },
+  }).select("id,status").single();
+  if (insertError) throw insertError;
+
+  const repository = Deno.env.get("GITHUB_SYNC_REPOSITORY") || "debasistema-max/debasistema-max.github.io";
+  const workflow = Deno.env.get("GITHUB_SYNC_WORKFLOW") || "sync-catalog.yml";
+  const gitHubResponse = await fetch(`https://api.github.com/repos/${repository}/actions/workflows/${workflow}/dispatches`, {
+    method: "POST",
+    headers: {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${requiredEnv("GITHUB_SYNC_TOKEN")}`,
+      "Content-Type": "application/json",
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+    body: JSON.stringify({ ref: "main", inputs: { job_id: job.id, matrix_patch: "true" }, return_run_details: true }),
+  });
+  const run = gitHubResponse.status === 204 ? {} : await gitHubResponse.json().catch(() => ({}));
+  if (!gitHubResponse.ok) {
+    await admin.from("sync_jobs").update({
+      status: "FALHOU", summary: { operation: "MATRIX_PATCH" },
+      error_message: `Disparo remoto recusado (${gitHubResponse.status}).`, finished_at: new Date().toISOString(),
+    }).eq("id", job.id);
+    throw new Error(`GitHub recusou o processamento (${gitHubResponse.status}).`);
+  }
+  if (run.workflow_run_id || run.html_url) {
+    await admin.from("sync_jobs").update({
+      github_run_id: run.workflow_run_id ?? null, github_run_url: run.html_url ?? null,
+    }).eq("id", job.id);
+  }
+  return { queued: true, job_id: job.id, status: job.status, operation: "MATRIX_PATCH" };
+}
+
 async function hasServiceRole(req: Request): Promise<boolean> {
   const match = (req.headers.get("authorization") || "").match(/^Bearer\s+(.+)$/i);
   const token = match?.[1] || "";
@@ -860,6 +910,33 @@ async function secureWorkbookDownload(req: Request, jobId: string): Promise<Resp
   });
 }
 
+async function securePrepareMatrixUpload(req: Request, jobId: string): Promise<Record<string, unknown>> {
+  if (!(await hasServiceRole(req))) throw new Error("Acesso de backend obrigatorio.");
+  if (!/^[0-9a-f-]{36}$/i.test(jobId)) throw new Error("Solicitacao invalida.");
+  const admin = createClient(requiredEnv("SUPABASE_URL"), requiredEnv("SUPABASE_SERVICE_ROLE_KEY"), {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data: job, error } = await admin.from("sync_jobs").select("id,status,summary").eq("id", jobId).maybeSingle();
+  if (error || !job || job.status !== "EM_EXECUCAO" || job.summary?.operation !== "MATRIX_PATCH") {
+    throw new Error("Solicitacao indisponivel para gravacao.");
+  }
+  const token = await graphToken(true);
+  const target = await resolveWorkbookTarget(token);
+  const backupName = await createWorkbookBackup(token, target);
+  const response = await fetchWithRetry(`${GRAPH_ROOT}/items/${encodeURIComponent(target.item.id)}/createUploadSession`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ item: { "@microsoft.graph.conflictBehavior": "replace", name: target.item.name } }),
+  });
+  const session = await response.json().catch(() => ({}));
+  if (!response.ok || !session.uploadUrl) throw new Error(`Microsoft recusou a sessao de gravacao (${response.status}).`);
+  const uploadUrl = new URL(String(session.uploadUrl));
+  const allowedHost = uploadUrl.protocol === "https:"
+    && (uploadUrl.hostname.endsWith(".up.1drv.com") || uploadUrl.hostname.endsWith(".up.1drv.ms"));
+  if (!allowedHost) throw new Error("Microsoft retornou destino de gravacao nao autorizado.");
+  return { upload_url: uploadUrl.toString(), backup_name: backupName, backup_folder: BACKUP_FOLDER_NAME };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return preflightResponse(req);
   if (!isOriginAllowed(req)) return jsonResponse(req, { error: "Origem nao autorizada." }, 403);
@@ -870,6 +947,9 @@ Deno.serve(async (req) => {
     if (input.action === "download") {
       return await secureWorkbookDownload(req, String(input.job_id || ""));
     }
+    if (input.action === "prepare_matrix_upload") {
+      return jsonResponse(req, { data: await securePrepareMatrixUpload(req, String(input.job_id || "")) });
+    }
 
     const { user } = await requireAdmin(req);
     if (input.action === "connect_start") return jsonResponse(req, { data: await startMicrosoftConnection() });
@@ -877,7 +957,7 @@ Deno.serve(async (req) => {
       return jsonResponse(req, { data: await completeMicrosoftConnection(String(input.device_code || "")) });
     }
     if (input.action === "patch_matrix") {
-      return jsonResponse(req, { data: await patchMatrixWorkbook(input.rows || []) });
+      return jsonResponse(req, { data: await queueMatrixPatch(user.id, input.rows || []) }, 202);
     }
     const photosOnly = input.action === "dispatch_photos";
 

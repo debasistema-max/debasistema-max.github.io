@@ -31,10 +31,18 @@ describe('reconexão segura do OneDrive', () => {
 
   it('atualiza somente a matriz configurada após criar backup', () => {
     const syncFunction = readFileSync(new URL('../supabase/functions/sync-onedrive/index.ts', import.meta.url), 'utf8');
+    const patchScript = readFileSync(new URL('../scripts/patch-matrix-remote.mjs', import.meta.url), 'utf8');
+    const patchWorkbook = readFileSync(new URL('../scripts/patch-matrix-workbook.py', import.meta.url), 'utf8');
+    const workflow = readFileSync(new URL('../.github/workflows/sync-catalog.yml', import.meta.url), 'utf8');
     const main = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
     const api = readFileSync(new URL('../src/services/api.js', import.meta.url), 'utf8');
     assert.match(syncFunction, /offline_access Files\.ReadWrite/);
     assert.match(syncFunction, /input\.action === "patch_matrix"/);
+    assert.match(syncFunction, /queueMatrixPatch\(user\.id, input\.rows \|\| \[\]\)/);
+    assert.match(syncFunction, /matrix_patch: "true"/);
+    assert.match(syncFunction, /input\.action === "prepare_matrix_upload"/);
+    assert.match(syncFunction, /createUploadSession/);
+    assert.match(syncFunction, /hostname\.endsWith\("\.up\.1drv\.com"\)/);
     assert.match(syncFunction, /rows\.length > 200/);
     assert.match(syncFunction, /"codigo_ips"/);
     assert.match(syncFunction, /requiredEnv\("ONEDRIVE_FOLDER_PATH"\)/);
@@ -80,5 +88,15 @@ describe('reconexão segura do OneDrive', () => {
     assert.match(main, /driveResult\?\.backup_folder/);
     assert.ok(main.indexOf('await api.patchMatrixOneDrive') < main.indexOf("await api.importRows('catalog', `partial-matrix:"));
     assert.match(main, /Reconectar OneDrive/);
+    assert.match(main, /Atualização da MATRIZ solicitada/);
+    assert.match(main, /job\.summary\?\.operation === 'MATRIX_PATCH'/);
+    assert.match(workflow, /matrix_patch:/);
+    assert.match(workflow, /patch-matrix-remote\.mjs/);
+    assert.match(workflow, /openpyxl==3\.1\.5/);
+    assert.match(patchScript, /action: "prepare_matrix_upload"/);
+    assert.match(patchScript, /Content-Range/);
+    assert.match(patchScript, /parsePortalWorkbook/);
+    assert.match(patchWorkbook, /copy_row_template/);
+    assert.match(patchWorkbook, /extend_filters_and_tables/);
   });
 });
