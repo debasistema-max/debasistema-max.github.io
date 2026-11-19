@@ -721,9 +721,12 @@ async function patchMatrixWorkbook(rows: MatrixPatchRow[]): Promise<Record<strin
 
     let rowsAdded = 0;
     if (missingRows.length) {
+      const rowsNeedingSap = missingRows.filter((row) => !String(appendDataValues(row).description || "").trim());
       const [table, sapDefaults] = await Promise.all([
         findMatrixTable(token, itemId, sheetName),
-        loadSapMatrixDefaults(token, itemId, missingRows.map((row) => String(row.code))),
+        rowsNeedingSap.length
+          ? loadSapMatrixDefaults(token, itemId, rowsNeedingSap.map((row) => String(row.code)))
+          : Promise.resolve(new Map<string, Record<string, string | number>>()),
       ]);
       rowsAdded = table
         ? await addMatrixTableRows(token, itemId, table, missingRows, sapDefaults)
