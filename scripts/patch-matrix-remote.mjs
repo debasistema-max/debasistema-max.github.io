@@ -20,7 +20,7 @@ const headers = {
   "Content-Type": "application/json",
 };
 
-const RETRYABLE_UPLOAD_STATUS = new Set([423, 429, 500, 502, 503, 504]);
+const RETRYABLE_UPLOAD_STATUS = new Set([409, 423, 429, 500, 502, 503, 504]);
 
 function uploadRetryDelay(response, attempt) {
   const retryAfter = String(response.headers.get("retry-after") || "").trim();
@@ -51,6 +51,10 @@ async function uploadWorkbook(uploadUrl, outputBytes) {
     console.warn(`OneDrive temporariamente indisponivel para gravacao (${response.status}); nova tentativa em ${Math.ceil(delay / 1_000)}s.`);
     await new Promise((resolve) => setTimeout(resolve, delay));
   }
+  try {
+    const cancelResponse = await fetch(uploadUrl, { method: "DELETE" });
+    await cancelResponse.body?.cancel();
+  } catch {}
   if (lastStatus === 423) {
     throw new Error("A planilha permaneceu bloqueada no OneDrive. Feche-a no Excel e tente novamente (423).");
   }

@@ -42,6 +42,10 @@ describe('reconexão segura do OneDrive', () => {
     assert.match(syncFunction, /matrix_patch: "true"/);
     assert.match(syncFunction, /input\.action === "prepare_matrix_upload"/);
     assert.match(syncFunction, /createUploadSession/);
+    assert.match(syncFunction, /retryableSessionStatus = new Set\(\[409, 423, 429, 500, 502, 503, 504\]\)/);
+    assert.match(syncFunction, /attempt < 6/);
+    assert.match(syncFunction, /Microsoft recusou a sessao de gravacao \(\$\{response\.status\}, \$\{sessionError\}\)/);
+    assert.match(syncFunction, /body: JSON\.stringify\(\{ item: \{ "@microsoft\.graph\.conflictBehavior": "replace" \} \}\)/);
     assert.match(syncFunction, /uploadUrl\.protocol !== "https:"/);
     assert.match(syncFunction, /uploadUrl\.username \|\| uploadUrl\.password/);
     assert.match(syncFunction, /upload_url: rawUploadUrl/);
@@ -98,10 +102,11 @@ describe('reconexão segura do OneDrive', () => {
     assert.match(workflow, /openpyxl==3\.1\.5/);
     assert.match(patchScript, /action: "prepare_matrix_upload"/);
     assert.match(patchScript, /Content-Range/);
-    assert.match(patchScript, /RETRYABLE_UPLOAD_STATUS = new Set\(\[423, 429, 500, 502, 503, 504\]\)/);
+    assert.match(patchScript, /RETRYABLE_UPLOAD_STATUS = new Set\(\[409, 423, 429, 500, 502, 503, 504\]\)/);
     assert.match(patchScript, /response\.headers\.get\("retry-after"\)/);
     assert.match(patchScript, /attempt < 7/);
     assert.match(patchScript, /await uploadWorkbook\(uploadUrl, outputBytes\)/);
+    assert.match(patchScript, /fetch\(uploadUrl, \{ method: "DELETE" \}\)/);
     assert.match(patchScript, /A planilha permaneceu bloqueada no OneDrive/);
     assert.match(patchScript, /parsePortalWorkbook/);
     assert.match(patchWorkbook, /copy_row_template/);
