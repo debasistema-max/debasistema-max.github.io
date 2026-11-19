@@ -51,6 +51,11 @@ describe('reconexão segura do OneDrive', () => {
     assert.match(syncFunction, /findMatrixTable/);
     assert.match(syncFunction, /workbook\/tables\/\$\{encodeURIComponent\(table\.id\)\}\/rows\/add/);
     assert.match(syncFunction, /body: JSON\.stringify\(\{ index: null, values \}\)/);
+    assert.match(syncFunction, /addMatrixRangeRows/);
+    assert.match(syncFunction, /cloneMatrixRowStyle/);
+    assert.match(syncFunction, /formulasR1C1/);
+    assert.match(syncFunction, /format\/borders/);
+    assert.doesNotMatch(syncFunction, /MATRIZ precisa estar formatada como tabela do Excel/);
     assert.match(syncFunction, /rows_added: rowsAdded/);
     assert.match(syncFunction, /appendDataValues/);
     assert.match(syncFunction, /const updates = sanitized\.flatMap/);

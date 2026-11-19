@@ -390,7 +390,7 @@ async function loadSapMatrixDefaults(
 
 type MatrixTable = { id: string; headers: string[] };
 
-async function findMatrixTable(token: string, itemId: string, sheetName: string): Promise<MatrixTable> {
+async function findMatrixTable(token: string, itemId: string, sheetName: string): Promise<MatrixTable | null> {
   const tables = await graphJson(
     `${GRAPH_ROOT}/items/${itemId}/workbook/worksheets/${sheetName}/tables?%24select=id,name`, token,
   );
@@ -404,7 +404,34 @@ async function findMatrixTable(token: string, itemId: string, sheetName: string)
       ? headerRange.values[0] as unknown[] : []).map(normalizeHeader);
     if (headers.some((header) => CODE_HEADERS.includes(header))) return { id: tableId, headers };
   }
-  throw new Error("A aba MATRIZ precisa estar formatada como tabela do Excel para incluir novos itens mantendo o padrao visual.");
+  return null;
+}
+
+function matrixAppendRowValues(
+  headers: string[],
+  row: MatrixPatchRow,
+  sapDefaults: Map<string, Record<string, string | number>>,
+): (string | number | null)[] {
+  const codeColumn = headers.findIndex((header) => CODE_HEADERS.includes(header));
+  if (codeColumn < 0) throw new Error("Coluna de codigo nao encontrada na aba MATRIZ.");
+  const fieldColumns = Object.fromEntries(Object.entries(MATRIX_FIELDS).map(([field, definition]) => [
+    field, headers.findIndex((header) => definition.aliases.includes(header)),
+  ]));
+  const explicit = matrixFieldValues(row);
+  for (const field of Object.keys(explicit)) {
+    if (Number(fieldColumns[field]) < 0) throw new Error(`Coluna ${MATRIX_FIELDS[field].label} nao encontrada na aba MATRIZ.`);
+  }
+  const fields = { ...(sapDefaults.get(String(row.code)) || {}), ...appendDataValues(row), ...explicit };
+  if (!String(fields.description || "").trim()) {
+    throw new Error(`Codigo ${row.code} nao encontrado com descricao no Cadastro Item SAP ou no portal.`);
+  }
+  const cells: (string | number | null)[] = Array(headers.length).fill(null);
+  cells[codeColumn] = String(row.code);
+  for (const [field, value] of Object.entries(fields)) {
+    const column = Number(fieldColumns[field]);
+    if (column >= 0) cells[column] = value;
+  }
+  return cells;
 }
 
 async function addMatrixTableRows(
@@ -415,28 +442,7 @@ async function addMatrixTableRows(
   sapDefaults: Map<string, Record<string, string | number>>,
 ): Promise<number> {
   if (!rows.length) return 0;
-  const codeColumn = table.headers.findIndex((header) => CODE_HEADERS.includes(header));
-  if (codeColumn < 0) throw new Error("Coluna de codigo nao encontrada na tabela MATRIZ.");
-  const fieldColumns = Object.fromEntries(Object.entries(MATRIX_FIELDS).map(([field, definition]) => [
-    field, table.headers.findIndex((header) => definition.aliases.includes(header)),
-  ]));
-  const values = rows.map((row) => {
-    const explicit = matrixFieldValues(row);
-    for (const field of Object.keys(explicit)) {
-      if (Number(fieldColumns[field]) < 0) throw new Error(`Coluna ${MATRIX_FIELDS[field].label} nao encontrada na tabela MATRIZ.`);
-    }
-    const fields = { ...(sapDefaults.get(String(row.code)) || {}), ...appendDataValues(row), ...explicit };
-    if (!String(fields.description || "").trim()) {
-      throw new Error(`Codigo ${row.code} nao encontrado com descricao no Cadastro Item SAP ou no portal.`);
-    }
-    const cells: (string | number | null)[] = Array(table.headers.length).fill(null);
-    cells[codeColumn] = String(row.code);
-    for (const [field, value] of Object.entries(fields)) {
-      const column = Number(fieldColumns[field]);
-      if (column >= 0) cells[column] = value;
-    }
-    return cells;
-  });
+  const values = rows.map((row) => matrixAppendRowValues(table.headers, row, sapDefaults));
   const response = await fetchWithRetry(
     `${GRAPH_ROOT}/items/${itemId}/workbook/tables/${encodeURIComponent(table.id)}/rows/add`,
     {
@@ -450,6 +456,104 @@ async function addMatrixTableRows(
     throw new Error(`Nao foi possivel incluir novos itens na tabela MATRIZ (${response.status}, ${String(failure?.error?.code || "erro").replace(/[^a-z0-9_.-]/gi, "")}).`);
   }
   await response.body?.cancel().catch(() => {});
+  return rows.length;
+}
+
+async function patchWorkbookResource(
+  token: string,
+  url: string,
+  body: Record<string, unknown>,
+  label: string,
+): Promise<void> {
+  if (!Object.keys(body).length) return;
+  const response = await fetchWithRetry(url, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const failure = await response.json().catch(() => ({}));
+    throw new Error(`${label} (${response.status}, ${String(failure?.error?.code || "erro").replace(/[^a-z0-9_.-]/gi, "")}).`);
+  }
+  await response.body?.cancel().catch(() => {});
+}
+
+function selectedProperties(source: Record<string, unknown>, properties: string[]): Record<string, unknown> {
+  return Object.fromEntries(properties
+    .filter((property) => source[property] !== null && source[property] !== undefined)
+    .map((property) => [property, source[property]]));
+}
+
+async function cloneMatrixRowStyle(
+  token: string,
+  itemId: string,
+  sheetName: string,
+  sourceAddress: string,
+  targetAddress: string,
+  targetRows: number,
+): Promise<void> {
+  const sourceRange = `${GRAPH_ROOT}/items/${itemId}/workbook/worksheets/${sheetName}/range(address='${sourceAddress}')`;
+  const targetRange = `${GRAPH_ROOT}/items/${itemId}/workbook/worksheets/${sheetName}/range(address='${targetAddress}')`;
+  const [template, format, font, fill, borders] = await Promise.all([
+    graphJson(`${sourceRange}?%24select=formulasR1C1,numberFormat`, token),
+    graphJson(`${sourceRange}/format`, token),
+    graphJson(`${sourceRange}/format/font`, token),
+    graphJson(`${sourceRange}/format/fill`, token),
+    graphJson(`${sourceRange}/format/borders`, token),
+  ]);
+  const templateFormulas = Array.isArray(template.formulasR1C1) && Array.isArray(template.formulasR1C1[0])
+    ? (template.formulasR1C1[0] as unknown[]).map((value) => typeof value === "string" && value.trim().startsWith("=") ? value : null)
+    : [];
+  const templateFormats = Array.isArray(template.numberFormat) && Array.isArray(template.numberFormat[0])
+    ? template.numberFormat[0] as unknown[] : [];
+  const repeated = (row: unknown[]) => Array.from({ length: targetRows }, () => [...row]);
+  await patchWorkbookResource(token, targetRange, {
+    ...(templateFormulas.some((value) => value !== null) ? { formulasR1C1: repeated(templateFormulas) } : {}),
+    ...(templateFormats.length ? { numberFormat: repeated(templateFormats) } : {}),
+  }, "Nao foi possivel copiar formulas e formatos da ultima linha da MATRIZ");
+  await patchWorkbookResource(token, `${targetRange}/format`, selectedProperties(format, [
+    "horizontalAlignment", "rowHeight", "verticalAlignment", "wrapText",
+  ]), "Nao foi possivel copiar o alinhamento da MATRIZ");
+  await patchWorkbookResource(token, `${targetRange}/format/font`, selectedProperties(font, [
+    "bold", "color", "italic", "name", "size", "underline",
+  ]), "Nao foi possivel copiar a fonte da MATRIZ");
+  await patchWorkbookResource(token, `${targetRange}/format/fill`, selectedProperties(fill, ["color"]),
+    "Nao foi possivel copiar o preenchimento da MATRIZ");
+  for (const border of Array.isArray(borders.value) ? borders.value as Record<string, unknown>[] : []) {
+    const sideIndex = String(border.sideIndex || border.id || "");
+    if (!/^[a-z]+$/i.test(sideIndex)) continue;
+    await patchWorkbookResource(token, `${targetRange}/format/borders/${encodeURIComponent(sideIndex)}`,
+      selectedProperties(border, ["color", "style", "weight"]), "Nao foi possivel copiar as bordas da MATRIZ");
+  }
+}
+
+async function addMatrixRangeRows(
+  token: string,
+  itemId: string,
+  sheetName: string,
+  headers: string[],
+  baseRow: number,
+  baseColumn: number,
+  sourceRows: Map<string, number[]>,
+  rows: MatrixPatchRow[],
+  sapDefaults: Map<string, Record<string, string | number>>,
+): Promise<number> {
+  if (!rows.length) return 0;
+  const rowOffsets = [...sourceRows.values()].flat();
+  if (!rowOffsets.length) throw new Error("A aba MATRIZ nao possui uma linha de item para copiar o padrao visual.");
+  const lastDataOffset = Math.max(...rowOffsets);
+  const sourceExcelRow = baseRow + lastDataOffset + 1;
+  const targetStartRow = sourceExcelRow + 1;
+  const targetEndRow = targetStartRow + rows.length - 1;
+  const firstColumn = excelColumn(baseColumn);
+  const lastColumn = excelColumn(baseColumn + headers.length - 1);
+  const sourceAddress = `${firstColumn}${sourceExcelRow}:${lastColumn}${sourceExcelRow}`;
+  const targetAddress = `${firstColumn}${targetStartRow}:${lastColumn}${targetEndRow}`;
+  const values = rows.map((row) => matrixAppendRowValues(headers, row, sapDefaults));
+  await cloneMatrixRowStyle(token, itemId, sheetName, sourceAddress, targetAddress, rows.length);
+  await patchWorkbookResource(token,
+    `${GRAPH_ROOT}/items/${itemId}/workbook/worksheets/${sheetName}/range(address='${targetAddress}')`,
+    { values }, "Nao foi possivel incluir novos itens no intervalo da MATRIZ");
   return rows.length;
 }
 
@@ -638,7 +742,9 @@ async function patchMatrixWorkbook(rows: MatrixPatchRow[]): Promise<Record<strin
         findMatrixTable(token, itemId, sheetName),
         loadSapMatrixDefaults(token, itemId, missingRows.map((row) => String(row.code))),
       ]);
-      rowsAdded = await addMatrixTableRows(token, itemId, table, missingRows, sapDefaults);
+      rowsAdded = table
+        ? await addMatrixTableRows(token, itemId, table, missingRows, sapDefaults)
+        : await addMatrixRangeRows(token, itemId, sheetName, headers, baseRow, baseColumn, sourceRows, missingRows, sapDefaults);
     }
     for (let start = 0; start < updates.length; start += 10) {
       await applyWorkbookUpdates(token, itemId, sheetName, updates.slice(start, start + 10));
