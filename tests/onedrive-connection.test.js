@@ -42,7 +42,10 @@ describe('reconexão segura do OneDrive', () => {
     assert.match(syncFunction, /matrix_patch: "true"/);
     assert.match(syncFunction, /input\.action === "prepare_matrix_upload"/);
     assert.match(syncFunction, /createUploadSession/);
-    assert.match(syncFunction, /hostname\.endsWith\("\.up\.1drv\.com"\)/);
+    assert.match(syncFunction, /uploadUrl\.protocol !== "https:"/);
+    assert.match(syncFunction, /uploadUrl\.username \|\| uploadUrl\.password/);
+    assert.match(syncFunction, /upload_url: rawUploadUrl/);
+    assert.doesNotMatch(syncFunction, /hostname\.endsWith\("\.up\.1drv\.com"\)/);
     assert.match(syncFunction, /rows\.length > 200/);
     assert.match(syncFunction, /"codigo_ips"/);
     assert.match(syncFunction, /requiredEnv\("ONEDRIVE_FOLDER_PATH"\)/);
