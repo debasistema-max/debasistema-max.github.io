@@ -478,12 +478,6 @@ async function patchWorkbookResource(
   await response.body?.cancel().catch(() => {});
 }
 
-function selectedProperties(source: Record<string, unknown>, properties: string[]): Record<string, unknown> {
-  return Object.fromEntries(properties
-    .filter((property) => source[property] !== null && source[property] !== undefined)
-    .map((property) => [property, source[property]]));
-}
-
 async function cloneMatrixRowStyle(
   token: string,
   itemId: string,
@@ -491,39 +485,28 @@ async function cloneMatrixRowStyle(
   sourceAddress: string,
   targetAddress: string,
   targetRows: number,
-): Promise<void> {
+): Promise<boolean> {
   const sourceRange = `${GRAPH_ROOT}/items/${itemId}/workbook/worksheets/${sheetName}/range(address='${sourceAddress}')`;
   const targetRange = `${GRAPH_ROOT}/items/${itemId}/workbook/worksheets/${sheetName}/range(address='${targetAddress}')`;
-  const [template, format, font, fill, borders] = await Promise.all([
-    graphJson(`${sourceRange}?%24select=formulasR1C1,numberFormat`, token),
-    graphJson(`${sourceRange}/format`, token),
-    graphJson(`${sourceRange}/format/font`, token),
-    graphJson(`${sourceRange}/format/fill`, token),
-    graphJson(`${sourceRange}/format/borders`, token),
-  ]);
-  const templateFormulas = Array.isArray(template.formulasR1C1) && Array.isArray(template.formulasR1C1[0])
-    ? (template.formulasR1C1[0] as unknown[]).map((value) => typeof value === "string" && value.trim().startsWith("=") ? value : null)
-    : [];
-  const templateFormats = Array.isArray(template.numberFormat) && Array.isArray(template.numberFormat[0])
-    ? template.numberFormat[0] as unknown[] : [];
-  const repeated = (row: unknown[]) => Array.from({ length: targetRows }, () => [...row]);
-  await patchWorkbookResource(token, targetRange, {
-    ...(templateFormulas.some((value) => value !== null) ? { formulasR1C1: repeated(templateFormulas) } : {}),
-    ...(templateFormats.length ? { numberFormat: repeated(templateFormats) } : {}),
-  }, "Nao foi possivel copiar formulas e formatos da ultima linha da MATRIZ");
-  await patchWorkbookResource(token, `${targetRange}/format`, selectedProperties(format, [
-    "horizontalAlignment", "rowHeight", "verticalAlignment", "wrapText",
-  ]), "Nao foi possivel copiar o alinhamento da MATRIZ");
-  await patchWorkbookResource(token, `${targetRange}/format/font`, selectedProperties(font, [
-    "bold", "color", "italic", "name", "size", "underline",
-  ]), "Nao foi possivel copiar a fonte da MATRIZ");
-  await patchWorkbookResource(token, `${targetRange}/format/fill`, selectedProperties(fill, ["color"]),
-    "Nao foi possivel copiar o preenchimento da MATRIZ");
-  for (const border of Array.isArray(borders.value) ? borders.value as Record<string, unknown>[] : []) {
-    const sideIndex = String(border.sideIndex || border.id || "");
-    if (!/^[a-z]+$/i.test(sideIndex)) continue;
-    await patchWorkbookResource(token, `${targetRange}/format/borders/${encodeURIComponent(sideIndex)}`,
-      selectedProperties(border, ["color", "style", "weight"]), "Nao foi possivel copiar as bordas da MATRIZ");
+  try {
+    const template = await graphJson(`${sourceRange}?%24select=formulasR1C1,numberFormat`, token);
+    const templateFormulas = Array.isArray(template.formulasR1C1) && Array.isArray(template.formulasR1C1[0])
+      ? (template.formulasR1C1[0] as unknown[]).map((value) => typeof value === "string" && value.trim().startsWith("=") ? value : null)
+      : [];
+    const templateFormats = Array.isArray(template.numberFormat) && Array.isArray(template.numberFormat[0])
+      ? template.numberFormat[0] as unknown[] : [];
+    const repeated = (row: unknown[]) => Array.from({ length: targetRows }, () => [...row]);
+    const body = {
+      ...(templateFormulas.some((value) => value !== null) ? { formulasR1C1: repeated(templateFormulas) } : {}),
+      ...(templateFormats.length ? { numberFormat: repeated(templateFormats) } : {}),
+    };
+    if (!Object.keys(body).length) return false;
+    await patchWorkbookResource(token, targetRange, body,
+      "Nao foi possivel copiar formulas e formatos da ultima linha da MATRIZ");
+    return true;
+  } catch {
+    // A formatacao auxiliar nao pode impedir a inclusao dos dados. A planilha continua protegida pelo backup.
+    return false;
   }
 }
 

@@ -15,9 +15,19 @@ async function invocationError(error) {
   const response = error?.context;
   if (response && typeof response.clone === 'function') {
     try {
-      const payload = await response.clone().json();
-      if (payload?.error) return new Error(String(payload.error));
+      const body = await response.clone().text();
+      if (body) {
+        try {
+          const payload = JSON.parse(body);
+          if (payload?.error) return new Error(String(payload.error));
+        } catch {
+          const message = body.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+          if (message) return new Error(message.slice(0, 500));
+        }
+      }
     } catch {}
+    const status = Number(response.status || 0);
+    if (status) return new Error(`A função segura recusou a operação (${status}). Tente novamente.`);
   }
   return error instanceof Error ? error : new Error('A função segura não respondeu corretamente.');
 }

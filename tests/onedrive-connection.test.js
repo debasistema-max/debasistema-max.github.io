@@ -24,7 +24,8 @@ describe('reconexão segura do OneDrive', () => {
     assert.doesNotMatch(main, /refresh_token/);
     assert.match(main, /Reconectar OneDrive/);
     assert.match(main, /Confirmar conexão/);
-    assert.match(api, /response\.clone\(\)\.json\(\)/);
+    assert.match(api, /response\.clone\(\)\.text\(\)/);
+    assert.match(api, /JSON\.parse\(body\)/);
     assert.match(api, /throw await invocationError\(error\)/);
   });
 
@@ -54,7 +55,8 @@ describe('reconexão segura do OneDrive', () => {
     assert.match(syncFunction, /addMatrixRangeRows/);
     assert.match(syncFunction, /cloneMatrixRowStyle/);
     assert.match(syncFunction, /formulasR1C1/);
-    assert.match(syncFunction, /format\/borders/);
+    assert.match(syncFunction, /A formatacao auxiliar nao pode impedir a inclusao dos dados/);
+    assert.doesNotMatch(syncFunction, /format\/borders/);
     assert.doesNotMatch(syncFunction, /MATRIZ precisa estar formatada como tabela do Excel/);
     assert.match(syncFunction, /rows_added: rowsAdded/);
     assert.match(syncFunction, /appendDataValues/);
