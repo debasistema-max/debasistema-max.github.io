@@ -52,6 +52,26 @@ test('lista comercial exibe +50 quando o estoque atualizado atinge o limite', ()
   assert.equal(sheet.I3.v, '+50');
 });
 
+test('lista comercial pode exibir estoques separados de PR e SP', () => {
+  const item = { ...payload.items[0], stock_pr: 50, stock_sp: 12, stock_origin: 50 };
+  const [row] = commercialRows([item], 'BOTH');
+  assert.equal(row['Estoque PR'], 'DISPONÍVEL');
+  assert.equal(row['Qtd. PR'], '+50');
+  assert.equal(row['Estoque SP'], 'CONFIRMAR');
+  assert.equal(row['Qtd. SP'], '12');
+  assert.equal(Object.hasOwn(row, 'Estoque'), false);
+
+  const twoStocksPayload = { ...payload, items: [item], context: { ...payload.context, stockMode: 'BOTH' } };
+  const workbook = buildExcelWorkbook(twoStocksPayload);
+  const sheet = workbook.Sheets['LISTA PR-SC'];
+  assert.deepEqual(['H2', 'I2', 'J2', 'K2'].map((cell) => sheet[cell].v), ['Estoque PR', 'Qtd. PR', 'Estoque SP', 'Qtd. SP']);
+  assert.deepEqual(['H3', 'I3', 'J3', 'K3'].map((cell) => sheet[cell].v), ['DISPONÍVEL', '+50', 'CONFIRMAR', '12']);
+  assert.equal(sheet['!autofilter'].ref, 'A2:K3');
+
+  const pdf = buildPdfDocument(twoStocksPayload);
+  assert.ok(Buffer.from(pdf.output('arraybuffer')).length > 2_000);
+});
+
 test('lista comercial remove ano e grafias repetidas da aplicação', () => {
   const [row] = commercialRows([{
     code: 'ABC-2',

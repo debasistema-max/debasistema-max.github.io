@@ -233,6 +233,10 @@ svg { display: block; width: 22px; height: 22px; }
 .cart-actions > div { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
 
 .shortcut-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.list-toolbar { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.list-toolbar .shortcut-row { margin-bottom: 0; }
+.list-stock-mode { display: grid; gap: 5px; min-width: 220px; color: var(--slate-600); font-size: .76rem; font-weight: 750; }
+.list-stock-mode select { min-height: 40px; }
 .shortcut-row button { border: 1px solid var(--slate-300); border-radius: 999px; background: #fff; color: var(--slate-700); padding: 8px 13px; font-size: .76rem; font-weight: 700; }
 .shortcut-row button:hover { border-color: var(--blue-600); color: var(--blue-600); }
 .shortcut-row button.active { border-color: var(--navy-900); background: var(--navy-900); color: #fff; }
@@ -252,6 +256,7 @@ svg { display: block; width: 22px; height: 22px; }
 .branch-stock { min-width: 38px; font-size: .78rem; }
 .branch-stock strong { color: var(--slate-700); font-weight: 700; }
 .commercial-list-table { min-width: 1260px; }
+.commercial-list-table.commercial-list-two-stocks { min-width: 1480px; }
 .commercial-list-table th { background: var(--slate-100); color: var(--navy-800); }
 .commercial-list-table th:first-child { border-top-left-radius: 9px; }
 .commercial-list-table th:last-child { border-top-right-radius: 9px; }
@@ -506,6 +511,8 @@ tbody tr:last-child td { border-bottom: 0; }
   .input-action { grid-template-columns: 1fr; }
   .product-actions { flex-direction: column; }
   .list-selection-bar { align-items: stretch; flex-direction: column; }
+  .list-toolbar { align-items: stretch; flex-direction: column; }
+  .list-stock-mode { min-width: 0; width: 100%; }
   .list-selection-bar > div { display: grid; grid-template-columns: 1fr; }
   .commercial-list-hero { padding: 18px; }
   .commercial-list-results { border: 0; background: transparent; padding: 0; box-shadow: none; }

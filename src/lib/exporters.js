@@ -48,7 +48,7 @@ export function rowsForExport(items) {
   }));
 }
 
-export function commercialRows(items) {
+export function commercialRows(items, stockMode = 'ORIGIN') {
   const uniqueItems = new Map();
   for (const item of items) {
     const code = String(itemValue(item, 'code') || '').trim().toLocaleUpperCase('pt-BR');
@@ -57,21 +57,35 @@ export function commercialRows(items) {
   }
   return [...uniqueItems.values()].map((item) => {
     const stockOrigin = itemValue(item, 'stock_origin', null);
-    return {
+    const common = {
       'Código IPS': itemValue(item, 'code'),
       Descrição: itemValue(item, 'description'),
       Marca: itemValue(item, 'brand'),
       Aplicação: commercialApplicationValues(itemValue(item, 'applications', [])).join('; '),
       Ano: commercialYearValues(itemValue(item, 'years', []), itemValue(item, 'applications', [])).join('; '),
       'Preço s/ impostos': itemValue(item, 'base_price', null),
-      'Preço c/ impostos': itemValue(item, 'price', null),
+      'Preço c/ impostos': itemValue(item, 'price', null)
+    };
+    if (stockMode === 'BOTH') {
+      const stockPr = itemValue(item, 'stock_pr', null);
+      const stockSp = itemValue(item, 'stock_sp', null);
+      return {
+        ...common,
+        'Estoque PR': stockPr === null ? 'SEM DADOS' : stockLevel(stockPr).label.toLocaleUpperCase('pt-BR'),
+        'Qtd. PR': stockQuantity(stockPr),
+        'Estoque SP': stockSp === null ? 'SEM DADOS' : stockLevel(stockSp).label.toLocaleUpperCase('pt-BR'),
+        'Qtd. SP': stockQuantity(stockSp)
+      };
+    }
+    return {
+      ...common,
       Estoque: stockOrigin === null ? 'SEM DADOS' : stockLevel(stockOrigin).label.toLocaleUpperCase('pt-BR'),
       Quantidade: stockQuantity(stockOrigin)
     };
   });
 }
 
-function styleCommercialSheet(sheet, rowCount) {
+function styleCommercialSheet(sheet, rowCount, headers) {
   const headerStyle = {
     font: { bold: true, color: { rgb: 'FFFFFF' } },
     fill: { fgColor: { rgb: '0B1F3A' } },
@@ -83,30 +97,36 @@ function styleCommercialSheet(sheet, rowCount) {
     alignment: { vertical: 'center' }
   };
   if (sheet.A1) sheet.A1.s = titleStyle;
-  for (const column of 'ABCDEFGHI') if (sheet[`${column}2`]) sheet[`${column}2`].s = headerStyle;
+  headers.forEach((header, index) => {
+    const column = XLSX.utils.encode_col(index);
+    if (sheet[`${column}2`]) sheet[`${column}2`].s = headerStyle;
+  });
   for (let row = 3; row <= rowCount + 2; row += 1) {
     for (const column of ['F', 'G']) if (sheet[`${column}${row}`]) sheet[`${column}${row}`].z = 'R$ #,##0.00';
   }
   sheet['!rows'] = [{ hpt: 28 }, { hpt: 24 }];
-  sheet['!cols'] = [{ wch: 17 }, { wch: 38 }, { wch: 18 }, { wch: 48 }, { wch: 18 }, { wch: 20 }, { wch: 20 }, { wch: 18 }, { wch: 14 }];
-  sheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 8 } }];
-  sheet['!autofilter'] = { ref: `A2:I${Math.max(2, rowCount + 2)}` };
+  const widths = { 'Código IPS': 17, Descrição: 38, Marca: 18, Aplicação: 48, Ano: 18, 'Preço s/ impostos': 20, 'Preço c/ impostos': 20, Estoque: 18, Quantidade: 14, 'Estoque PR': 18, 'Qtd. PR': 12, 'Estoque SP': 18, 'Qtd. SP': 12 };
+  sheet['!cols'] = headers.map((header) => ({ wch: widths[header] || 16 }));
+  const lastColumn = XLSX.utils.encode_col(headers.length - 1);
+  sheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } }];
+  sheet['!autofilter'] = { ref: `A2:${lastColumn}${Math.max(2, rowCount + 2)}` };
   sheet['!freeze'] = { xSplit: 0, ySplit: 2, topLeftCell: 'A3', activePane: 'bottomLeft', state: 'frozen' };
 }
 
 export function buildExcelWorkbook({ title, items, context = {}, variant = 'document' }) {
   const workbook = XLSX.utils.book_new();
   if (variant === 'commercial-list') {
-    const rows = commercialRows(items);
+    const stockMode = context.stockMode === 'BOTH' ? 'BOTH' : 'ORIGIN';
+    const rows = commercialRows(items, stockMode);
     const routeCode = context.routeCode || `${context.originCode || '—'}-${context.destinationState || '—'}`;
-    const headers = ['Código IPS', 'Descrição', 'Marca', 'Aplicação', 'Ano', 'Preço s/ impostos', 'Preço c/ impostos', 'Estoque', 'Quantidade'];
+    const headers = ['Código IPS', 'Descrição', 'Marca', 'Aplicação', 'Ano', 'Preço s/ impostos', 'Preço c/ impostos', ...(stockMode === 'BOTH' ? ['Estoque PR', 'Qtd. PR', 'Estoque SP', 'Qtd. SP'] : ['Estoque', 'Quantidade'])];
     const values = [
       [`LISTA ${routeCode}`],
       headers,
       ...rows.map((row) => headers.map((header) => row[header]))
     ];
     const worksheet = XLSX.utils.aoa_to_sheet(values);
-    styleCommercialSheet(worksheet, rows.length);
+    styleCommercialSheet(worksheet, rows.length, headers);
     XLSX.utils.book_append_sheet(workbook, worksheet, `LISTA ${routeCode}`.slice(0, 31));
   } else {
     const worksheet = XLSX.utils.json_to_sheet(rowsForExport(items));
@@ -310,13 +330,16 @@ function drawCommercialHeader(doc, title, context, itemCount) {
 }
 
 function buildCommercialPdf(doc, payload) {
-  const rows = commercialRows(payload.items);
+  const stockMode = payload.context?.stockMode === 'BOTH' ? 'BOTH' : 'ORIGIN';
+  const rows = commercialRows(payload.items, stockMode);
+  const bothStocks = stockMode === 'BOTH';
+  const stockHeaders = bothStocks ? ['Estoque PR', 'Qtd. PR', 'Estoque SP', 'Qtd. SP'] : ['Estoque', 'Quantidade'];
   drawCommercialHeader(doc, payload.title, payload.context || {}, rows.length);
   autoTable(doc, {
     startY: 40,
     margin: { top: 12, right: 12, bottom: 12, left: 12 },
     tableWidth: 273,
-    head: [['Código IPS', 'Descrição', 'Marca', 'Aplicação', 'Ano', 'Preço s/ impostos', 'Preço c/ impostos', 'Estoque', 'Quantidade']],
+    head: [['Código IPS', 'Descrição', 'Marca', 'Aplicação', 'Ano', 'Preço s/ impostos', 'Preço c/ impostos', ...stockHeaders]],
     body: rows.map((row) => [
       row['Código IPS'],
       row.Descrição,
@@ -325,23 +348,25 @@ function buildCommercialPdf(doc, payload) {
       row.Ano || '—',
       row['Preço s/ impostos'] === null ? '—' : money(row['Preço s/ impostos']),
       row['Preço c/ impostos'] === null ? 'Sem preço' : money(row['Preço c/ impostos']),
-      row.Estoque,
-      row.Quantidade
+      ...(bothStocks
+        ? [row['Estoque PR'], row['Qtd. PR'], row['Estoque SP'], row['Qtd. SP']]
+        : [row.Estoque, row.Quantidade])
     ]),
     theme: 'plain',
-    styles: { fontSize: 7.2, minCellWidth: 0, cellPadding: { top: 2.5, right: 2, bottom: 2.5, left: 2 }, overflow: 'linebreak', valign: 'middle', lineColor: [222, 230, 238], lineWidth: { bottom: .15 } },
-    headStyles: { fillColor: [227, 238, 247], textColor: [11, 31, 58], fontStyle: 'bold', fontSize: 7.2, minCellHeight: 8 },
+    styles: { fontSize: bothStocks ? 6.5 : 7.2, minCellWidth: 0, cellPadding: { top: 2.5, right: 2, bottom: 2.5, left: 2 }, overflow: 'linebreak', valign: 'middle', lineColor: [222, 230, 238], lineWidth: { bottom: .15 } },
+    headStyles: { fillColor: [227, 238, 247], textColor: [11, 31, 58], fontStyle: 'bold', fontSize: bothStocks ? 6.4 : 7.2, minCellHeight: 8 },
     alternateRowStyles: { fillColor: [248, 251, 253] },
     columnStyles: {
-      0: { cellWidth: 22, fontStyle: 'bold', textColor: [11, 31, 58] },
-      1: { cellWidth: 42 },
-      2: { cellWidth: 22 },
-      3: { cellWidth: 62 },
-      4: { cellWidth: 22 },
-      5: { cellWidth: 27, halign: 'right' },
-      6: { cellWidth: 27, halign: 'right', fontStyle: 'bold' },
-      7: { cellWidth: 29 },
-      8: { cellWidth: 20, halign: 'right' }
+      0: { cellWidth: bothStocks ? 20 : 22, fontStyle: 'bold', textColor: [11, 31, 58] },
+      1: { cellWidth: bothStocks ? 38 : 42 },
+      2: { cellWidth: bothStocks ? 18 : 22 },
+      3: { cellWidth: bothStocks ? 52 : 62 },
+      4: { cellWidth: bothStocks ? 19 : 22 },
+      5: { cellWidth: bothStocks ? 23 : 27, halign: 'right' },
+      6: { cellWidth: bothStocks ? 23 : 27, halign: 'right', fontStyle: 'bold' },
+      7: { cellWidth: bothStocks ? 20 : 29 },
+      8: { cellWidth: 20, halign: 'right' },
+      ...(bothStocks ? { 9: { cellWidth: 20 }, 10: { cellWidth: 20, halign: 'right' } } : {})
     },
     didDrawPage: () => {
       doc.setFontSize(7);

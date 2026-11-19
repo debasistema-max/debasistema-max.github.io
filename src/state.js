@@ -36,6 +36,7 @@ export const state = {
   },
   openFilter: '',
   listMode: 'all',
+  listStockMode: restored.listStockMode === 'BOTH' ? 'BOTH' : 'ORIGIN',
   listSelection: new Map(),
   carts: { order: [], quotation: [] },
   documentDrafts: {
@@ -62,6 +63,7 @@ export function persistSessionState() {
     destinationState: state.destinationState,
     originCode: state.originCode,
     priceTableId: state.priceTableId,
+    listStockMode: state.listStockMode,
     filters: state.filters
   }));
 }

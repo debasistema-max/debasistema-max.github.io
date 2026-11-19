@@ -266,11 +266,16 @@ function commercialListResults() {
   if (state.busy) return '<div class="loading-state">Carregando produtos...</div>';
   if (!state.products.length) return '<div class="empty-state"><strong>Nenhum item encontrado</strong><span>Ajuste a pesquisa ou os filtros.</span></div>';
   const custom = state.listMode === 'custom';
+  const bothStocks = state.listStockMode === 'BOTH';
   const branchStock = (branch, quantity) => {
     const level = stockLevel(quantity);
     const value = stockQuantity(quantity);
     const description = `${branch}: ${value} · ${level.label}`;
     return `<span class="branch-stock stock-${level.key}" title="${escapeHtml(description)}" aria-label="${escapeHtml(description)}"><i aria-hidden="true"></i><strong>${value}</strong></span>`;
+  };
+  const stockStatus = (quantity) => {
+    const level = stockLevel(quantity);
+    return `<span class="stock-badge stock-${level.key}"><i></i>${escapeHtml(level.label.toLocaleUpperCase('pt-BR'))}</span>`;
   };
   const rows = state.products.map((product) => {
     const originLevel = stockLevel(product.stock_origin);
@@ -283,14 +288,15 @@ function commercialListResults() {
       <td data-label="Ano" class="list-year">${escapeHtml(commercialYearValues(product.years, product.applications).join(' · ') || '—')}</td>
       <td data-label="Preço s/ impostos" class="list-price">${product.base_price === null ? '—' : money(product.base_price)}</td>
       <td data-label="Preço c/ impostos" class="list-price">${product.price === null ? 'Sem preço' : money(product.price)}</td>
-      <td data-label="Estoque"><span class="stock-badge stock-${originLevel.key}"><i></i>${escapeHtml(originLevel.label.toLocaleUpperCase('pt-BR'))}</span></td>
-      <td data-label="Quantidade">${branchStock(state.originCode, product.stock_origin)}</td>
+      ${bothStocks
+        ? `<td data-label="Estoque PR">${stockStatus(product.stock_pr)}</td><td data-label="Qtd. PR">${branchStock('PR', product.stock_pr)}</td><td data-label="Estoque SP">${stockStatus(product.stock_sp)}</td><td data-label="Qtd. SP">${branchStock('SP', product.stock_sp)}</td>`
+        : `<td data-label="Estoque"><span class="stock-badge stock-${originLevel.key}"><i></i>${escapeHtml(originLevel.label.toLocaleUpperCase('pt-BR'))}</span></td><td data-label="Quantidade">${branchStock(state.originCode, product.stock_origin)}</td>`}
     </tr>`;
   }).join('');
   return `<section class="results-section commercial-list-results">
     <div class="results-meta"><span>${integer(state.productTotal)} item(ns)</span><span>Página ${state.productPage} de ${totalPages}</span></div>
     <div class="stock-legend" aria-label="Legenda de disponibilidade"><span class="stock-high"><i></i>Disponível <small>+50</small></span><span class="stock-low"><i></i>Confirmar <small>1–49</small></span><span class="stock-none"><i></i>Indisponível <small>0</small></span></div>
-    <div class="table-wrap"><table class="commercial-list-table"><thead><tr>${custom ? '<th class="list-check-cell">Incluir</th>' : ''}<th>Código IPS</th><th>Descrição</th><th>Marca</th><th>Aplicação</th><th>Ano</th><th>Preço s/ impostos</th><th>Preço c/ impostos</th><th>Estoque</th><th>Quantidade</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="table-wrap"><table class="commercial-list-table ${bothStocks ? 'commercial-list-two-stocks' : ''}"><thead><tr>${custom ? '<th class="list-check-cell">Incluir</th>' : ''}<th>Código IPS</th><th>Descrição</th><th>Marca</th><th>Aplicação</th><th>Ano</th><th>Preço s/ impostos</th><th>Preço c/ impostos</th>${bothStocks ? '<th>Estoque PR</th><th>Qtd. PR</th><th>Estoque SP</th><th>Qtd. SP</th>' : '<th>Estoque</th><th>Quantidade</th>'}</tr></thead><tbody>${rows}</tbody></table></div>
     <div class="pagination"><button class="button button-secondary" data-page="${state.productPage - 1}" ${state.productPage <= 1 ? 'disabled' : ''}>Anterior</button><button class="button button-secondary" data-page="${state.productPage + 1}" ${state.productPage >= totalPages ? 'disabled' : ''}>Próxima</button></div>
   </section>`;
 }
@@ -410,7 +416,7 @@ function renderLists() {
   const guidance = categoryPending ? '<div class="notice notice-warn">Escolha uma categoria para gerar a lista.</div>' : '';
   return `${pageHeader('Exportação', 'Listas comerciais', 'Filtre a lista e gere o arquivo no navegador. O arquivo não é armazenado no Supabase.', actions)}
     <section class="commercial-list-hero"><div><span class="eyebrow">Catálogo comercial</span><h2>Aplicações e anos organizados</h2><p>Visual limpo para consulta e compartilhamento, com preço e disponibilidade por filial.</p></div><div class="commercial-line-badges"><span>Linhas</span>${COMMERCIAL_LINES.map((line) => `<strong>${line}</strong>`).join('')}</div></section>
-    <div class="shortcut-row"><button class="${state.listMode === 'all' ? 'active' : ''}" data-list-shortcut="all">Lista completa</button><button class="${state.listMode === 'stock' ? 'active' : ''}" data-list-shortcut="stock">Somente disponíveis</button><button class="${state.listMode === 'category' ? 'active' : ''}" data-list-shortcut="category">Por categoria</button><button class="${custom ? 'active' : ''}" data-list-shortcut="custom">Personalizada</button></div>${guidance}${searchControls()}${selection}${commercialListResults()}`;
+    <div class="list-toolbar"><div class="shortcut-row"><button class="${state.listMode === 'all' ? 'active' : ''}" data-list-shortcut="all">Lista completa</button><button class="${state.listMode === 'stock' ? 'active' : ''}" data-list-shortcut="stock">Somente disponíveis</button><button class="${state.listMode === 'category' ? 'active' : ''}" data-list-shortcut="category">Por categoria</button><button class="${custom ? 'active' : ''}" data-list-shortcut="custom">Personalizada</button></div><label class="list-stock-mode"><span>Estoques na lista</span><select data-list-stock-mode><option value="ORIGIN" ${state.listStockMode === 'BOTH' ? '' : 'selected'}>Filial selecionada (${escapeHtml(state.originCode)})</option><option value="BOTH" ${state.listStockMode === 'BOTH' ? 'selected' : ''}>PR e SP</option></select></label></div>${guidance}${searchControls()}${selection}${commercialListResults()}`;
 }
 
 function renderDocuments() {
@@ -1041,6 +1047,10 @@ root.addEventListener('dblclick', (event) => {
 });
 
 root.addEventListener('change', async (event) => {
+  if (event.target.dataset.listStockMode !== undefined) {
+    state.listStockMode = event.target.value === 'BOTH' ? 'BOTH' : 'ORIGIN';
+    persistSessionState(); updateView(); return;
+  }
   if (event.target.id === 'sap-quote-pdf') {
     const file = event.target.files?.[0];
     if (file) await handleSapPdfValidation(file);
@@ -1220,7 +1230,7 @@ async function handleListExport(format) {
       state.filters.inStockOnly ? 'disponíveis' : ''
     ].filter(Boolean).join(' - ');
     const titleSuffix = state.listMode === 'custom' ? 'personalizada' : (filterTitle || 'completa');
-    const payload = { title: `Lista comercial - ${titleSuffix}`, variant: 'commercial-list', items, context: { destinationState: state.destinationState, originCode: state.originCode, routeCode: `${state.originCode}-${state.destinationState}`, lines: COMMERCIAL_LINES } };
+    const payload = { title: `Lista comercial - ${titleSuffix}`, variant: 'commercial-list', items, context: { destinationState: state.destinationState, originCode: state.originCode, routeCode: `${state.originCode}-${state.destinationState}`, lines: COMMERCIAL_LINES, stockMode: state.listStockMode } };
     format === 'pdf' ? exportPdf(payload) : exportExcel(payload);
     setToast(`${integer(items.length)} produto(s) exportado(s).`, 'success');
   } catch (error) {
