@@ -48,6 +48,10 @@ describe('reconexão segura do OneDrive', () => {
     assert.match(syncFunction, /Number\(backup\.size\) === expectedSize/);
     assert.doesNotMatch(syncFunction, /new URL\(location\)/);
     assert.match(syncFunction, /const sourceRows = new Map<string, number\[\]>\(\)/);
+    assert.match(syncFunction, /usedRange\(valuesOnly=true\)\?%24select=rowIndex,columnIndex,rowCount,columnCount/);
+    assert.match(syncFunction, /const codeChunkSize = 20_000/);
+    assert.match(syncFunction, /%24select=values/);
+    assert.doesNotMatch(syncFunction, /usedRange\(valuesOnly=true\)\?%24select=values,rowIndex/);
     assert.match(syncFunction, /Cadastro Item SAP/);
     assert.match(syncFunction, /const rowsNeedingSap = missingRows\.filter/);
     assert.match(syncFunction, /rowsNeedingSap\.length\s*\? loadSapMatrixDefaults/);

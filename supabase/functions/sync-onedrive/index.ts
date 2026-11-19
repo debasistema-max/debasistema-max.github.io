@@ -517,14 +517,12 @@ async function addMatrixRangeRows(
   headers: string[],
   baseRow: number,
   baseColumn: number,
-  sourceRows: Map<string, number[]>,
+  lastDataOffset: number,
   rows: MatrixPatchRow[],
   sapDefaults: Map<string, Record<string, string | number>>,
 ): Promise<number> {
   if (!rows.length) return 0;
-  const rowOffsets = [...sourceRows.values()].flat();
-  if (!rowOffsets.length) throw new Error("A aba MATRIZ nao possui uma linha de item para copiar o padrao visual.");
-  const lastDataOffset = Math.max(...rowOffsets);
+  if (lastDataOffset < 0) throw new Error("A aba MATRIZ nao possui uma linha de item para copiar o padrao visual.");
   const sourceExcelRow = baseRow + lastDataOffset + 1;
   const targetStartRow = sourceExcelRow + 1;
   const targetEndRow = targetStartRow + rows.length - 1;
@@ -671,25 +669,54 @@ async function patchMatrixWorkbook(rows: MatrixPatchRow[]): Promise<Record<strin
     const itemId = encodeURIComponent(target.item.id);
     const sheetName = encodeURIComponent("MATRIZ");
     const used = await graphJson(
-      `${GRAPH_ROOT}/items/${itemId}/workbook/worksheets/${sheetName}/usedRange(valuesOnly=true)?%24select=values,rowIndex,columnIndex,rowCount,columnCount`, token,
+      `${GRAPH_ROOT}/items/${itemId}/workbook/worksheets/${sheetName}/usedRange(valuesOnly=true)?%24select=rowIndex,columnIndex,rowCount,columnCount`, token,
     );
-    const values = Array.isArray(used.values) ? used.values as unknown[][] : [];
     const baseRow = Number(used.rowIndex || 0);
     const baseColumn = Number(used.columnIndex || 0);
-    const headerOffset = values.findIndex((line) => Array.isArray(line) && line.some((value) => CODE_HEADERS.includes(normalizeHeader(value))));
+    const rowCount = Number(used.rowCount || 0);
+    const columnCount = Number(used.columnCount || 0);
+    if (!Number.isInteger(rowCount) || !Number.isInteger(columnCount) || rowCount < 2 || columnCount < 1 || columnCount > 200) {
+      throw new Error("Dimensoes da aba MATRIZ invalidas.");
+    }
+    const firstColumnLetter = excelColumn(baseColumn);
+    const lastColumnLetter = excelColumn(baseColumn + columnCount - 1);
+    const headerScanRows = Math.min(rowCount, 50);
+    const headerAddress = `${firstColumnLetter}${baseRow + 1}:${lastColumnLetter}${baseRow + headerScanRows}`;
+    const headerRange = await graphJson(
+      `${GRAPH_ROOT}/items/${itemId}/workbook/worksheets/${sheetName}/range(address='${headerAddress}')?%24select=values`, token,
+    );
+    const headerValues = Array.isArray(headerRange.values) ? headerRange.values as unknown[][] : [];
+    const headerOffset = headerValues.findIndex((line) => Array.isArray(line) && line.some((value) => CODE_HEADERS.includes(normalizeHeader(value))));
     if (headerOffset < 0) throw new Error("Cabecalho da aba MATRIZ nao reconhecido.");
-    const headers = (values[headerOffset] || []).map(normalizeHeader);
+    const rawHeaders = headerValues[headerOffset] || [];
+    const headers = Array.from({ length: columnCount }, (_, index) => normalizeHeader(rawHeaders[index]));
     const codeColumn = headers.findIndex((header) => CODE_HEADERS.includes(header));
     const fieldColumns = Object.fromEntries(Object.entries(MATRIX_FIELDS).map(([field, definition]) => [
       field, headers.findIndex((header) => definition.aliases.includes(header)),
     ]));
     const sourceRows = new Map<string, number[]>();
-    for (let offset = headerOffset + 1; offset < values.length; offset += 1) {
-      const code = String(values[offset]?.[codeColumn] ?? "").trim().replace(/\.0+$/, "");
-      if (!code) continue;
-      const offsets = sourceRows.get(code) || [];
-      offsets.push(offset);
-      sourceRows.set(code, offsets);
+    const wantedCodes = new Set(sanitized.map((row) => String(row.code)));
+    const codeColumnLetter = excelColumn(baseColumn + codeColumn);
+    let lastDataOffset = -1;
+    const firstDataOffset = headerOffset + 1;
+    const codeChunkSize = 20_000;
+    for (let startOffset = firstDataOffset; startOffset < rowCount; startOffset += codeChunkSize) {
+      const endOffset = Math.min(rowCount - 1, startOffset + codeChunkSize - 1);
+      const codeAddress = `${codeColumnLetter}${baseRow + startOffset + 1}:${codeColumnLetter}${baseRow + endOffset + 1}`;
+      const codeRange = await graphJson(
+        `${GRAPH_ROOT}/items/${itemId}/workbook/worksheets/${sheetName}/range(address='${codeAddress}')?%24select=values`, token,
+      );
+      const codeValues = Array.isArray(codeRange.values) ? codeRange.values as unknown[][] : [];
+      for (let index = 0; index < codeValues.length; index += 1) {
+        const offset = startOffset + index;
+        const code = String(codeValues[index]?.[0] ?? "").trim().replace(/\.0+$/, "");
+        if (!code) continue;
+        lastDataOffset = offset;
+        if (!wantedCodes.has(code)) continue;
+        const offsets = sourceRows.get(code) || [];
+        offsets.push(offset);
+        sourceRows.set(code, offsets);
+      }
     }
 
     const missingRows: MatrixPatchRow[] = [];
@@ -730,7 +757,7 @@ async function patchMatrixWorkbook(rows: MatrixPatchRow[]): Promise<Record<strin
       ]);
       rowsAdded = table
         ? await addMatrixTableRows(token, itemId, table, missingRows, sapDefaults)
-        : await addMatrixRangeRows(token, itemId, sheetName, headers, baseRow, baseColumn, sourceRows, missingRows, sapDefaults);
+        : await addMatrixRangeRows(token, itemId, sheetName, headers, baseRow, baseColumn, lastDataOffset, missingRows, sapDefaults);
     }
     for (let start = 0; start < updates.length; start += 10) {
       await applyWorkbookUpdates(token, itemId, sheetName, updates.slice(start, start + 10));
