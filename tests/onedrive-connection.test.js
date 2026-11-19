@@ -47,6 +47,12 @@ describe('reconexão segura do OneDrive', () => {
     assert.match(syncFunction, /Number\(backup\.size\) === expectedSize/);
     assert.doesNotMatch(syncFunction, /new URL\(location\)/);
     assert.match(syncFunction, /const sourceRows = new Map<string, number\[\]>\(\)/);
+    assert.match(syncFunction, /Cadastro Item SAP/);
+    assert.match(syncFunction, /findMatrixTable/);
+    assert.match(syncFunction, /workbook\/tables\/\$\{encodeURIComponent\(table\.id\)\}\/rows\/add/);
+    assert.match(syncFunction, /body: JSON\.stringify\(\{ index: null, values \}\)/);
+    assert.match(syncFunction, /rows_added: rowsAdded/);
+    assert.match(syncFunction, /appendDataValues/);
     assert.match(syncFunction, /const updates = sanitized\.flatMap/);
     assert.match(syncFunction, /sheet_rows_updated: updates\.length/);
     assert.match(syncFunction, /backup_folder: BACKUP_FOLDER_NAME/);

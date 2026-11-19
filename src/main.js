@@ -532,7 +532,7 @@ function matrixPatchPanel() {
     <div class="matrix-patch-actions"><button class="button button-primary" data-action="apply-matrix-patch-drive" ${state.busy || pending.missingCodes.length || !pending.mergedRows.length ? 'disabled' : ''}>${state.busy ? 'Atualizando…' : 'Atualizar portal e OneDrive'}</button><button class="button button-secondary" data-action="apply-matrix-patch" ${state.busy || pending.missingCodes.length || !pending.mergedRows.length || pending.hasBasePrice ? 'disabled' : ''}>Somente portal</button></div>
     ${pending.hasBasePrice ? '<p class="muted">O preço da LISTA 02 precisa atualizar a MATRIZ no OneDrive para recalcular corretamente as tabelas do portal.</p>' : ''}
   </div>` : '<p class="muted">Envie uma planilha contendo somente os códigos que o chefe alterou.</p>';
-  return `<section class="panel admin-card admin-wide matrix-patch-card"><div class="section-title"><span>1B</span><div><h2>Atualizar alguns itens da matriz</h2><p>Altere vários itens de uma vez sem substituir a lista completa.</p></div></div><div class="matrix-patch-guidance"><strong>Colunas aceitas</strong><span>Código, Descrição, Aplicação, Ano, Categoria, Linha, Marca e Sinônimos.</span><span>Relatórios de preço: utiliza somente o código e a coluna <b>PRC.LIST 02</b> como preço base.</span><span>Células vazias mantêm o valor atual. Para apagar um valor, escreva <b>LIMPAR</b>.</span><span>Ao atualizar o OneDrive, o portal cria primeiro uma cópia de segurança datada da planilha.</span><span>Na primeira utilização, clique em <b>Reconectar OneDrive</b> para autorizar a gravação.</span></div><div class="matrix-patch-inputs"><label class="matrix-patch-source"><strong>Enviar arquivo</strong><span>Selecione uma planilha XLSX, XLS ou CSV.</span><input id="matrix-patch-file" type="file" accept=".xlsx,.xls,.csv"></label><label class="matrix-patch-source"><strong>Copiar e colar do Excel</strong><span>Cole a tabela completa ou somente duas colunas: código e preço.</span><textarea id="matrix-patch-paste" rows="6" placeholder="Código&#9;PRC.LIST 02&#10;7175526020&#9;628,00">${escapeHtml(matrixPatchPaste)}</textarea><button class="button button-secondary" type="button" data-action="prepare-matrix-paste" ${state.busy || !matrixPatchPaste.trim() ? 'disabled' : ''}>Preparar dados colados</button></label></div>${preview}</section>`;
+  return `<section class="panel admin-card admin-wide matrix-patch-card"><div class="section-title"><span>1B</span><div><h2>Atualizar alguns itens da matriz</h2><p>Altere vários itens de uma vez sem substituir a lista completa.</p></div></div><div class="matrix-patch-guidance"><strong>Colunas aceitas</strong><span>Código, Descrição, Aplicação, Ano, Categoria, Linha, Marca e Sinônimos.</span><span>Relatórios de preço: utiliza somente o código e a coluna <b>PRC.LIST 02</b> como preço base.</span><span>Códigos ausentes na MATRIZ serão incluídos no mesmo padrão da tabela, usando o Cadastro Item SAP e os dados disponíveis no portal.</span><span>Células vazias mantêm o valor atual. Para apagar um valor, escreva <b>LIMPAR</b>.</span><span>Ao atualizar o OneDrive, o portal cria primeiro uma cópia de segurança datada da planilha.</span><span>Na primeira utilização, clique em <b>Reconectar OneDrive</b> para autorizar a gravação.</span></div><div class="matrix-patch-inputs"><label class="matrix-patch-source"><strong>Enviar arquivo</strong><span>Selecione uma planilha XLSX, XLS ou CSV.</span><input id="matrix-patch-file" type="file" accept=".xlsx,.xls,.csv"></label><label class="matrix-patch-source"><strong>Copiar e colar do Excel</strong><span>Cole a tabela completa ou somente duas colunas: código e preço.</span><textarea id="matrix-patch-paste" rows="6" placeholder="Código&#9;PRC.LIST 02&#10;7175526020&#9;628,00">${escapeHtml(matrixPatchPaste)}</textarea><button class="button button-secondary" type="button" data-action="prepare-matrix-paste" ${state.busy || !matrixPatchPaste.trim() ? 'disabled' : ''}>Preparar dados colados</button></label></div>${preview}</section>`;
 }
 
 function sapStockDisplay(value) {
@@ -1397,8 +1397,11 @@ async function handleMatrixPatch(updateOneDrive = false) {
       ? `${driveResult.backup_folder}/${driveResult.backup_name}`
       : driveResult?.backup_name;
     const backup = backupPath ? ` Backup: ${backupPath}.` : '';
+    const additions = Number(driveResult?.rows_added || 0) > 0
+      ? ` ${integer(driveResult.rows_added)} novo(s) item(ns) incluído(s) na MATRIZ.`
+      : '';
     const synchronization = syncResult?.job_id ? ' A sincronização dos preços foi solicitada.' : '';
-    setToast(`Matriz atualizada${updateOneDrive ? ' no portal e no OneDrive' : ' somente no portal'}: ${integer(applied)} item(ns).${backup}${synchronization}`, 'success');
+    setToast(`Matriz atualizada${updateOneDrive ? ' no portal e no OneDrive' : ' somente no portal'}: ${integer(applied)} item(ns).${additions}${backup}${synchronization}`, 'success');
     pendingMatrixPatch = null;
     matrixPatchPaste = '';
     const [context, catalogOptions] = await Promise.all([api.loadContext(), api.getCatalogFilterOptions()]);
@@ -1424,11 +1427,27 @@ async function prepareMatrixPatchPreview(parsed, sourceName) {
   const currentProducts = await api.getProductsForMatrixPatch(parsed.rows.map((row) => row.code));
   const prepared = prepareMatrixPatch(parsed.rows, currentProducts);
   const changedCodes = new Set(prepared.mergedRows.map((row) => row.code));
+  const mergedByCode = new Map(prepared.mergedRows.map((row) => [String(row.code), row]));
   pendingMatrixPatch = {
     fileName: sourceName,
     originalCount: parsed.rows.length,
     fields: parsed.fields,
-    driveRows: parsed.rows.filter((row) => changedCodes.has(row.code)),
+    driveRows: parsed.rows.filter((row) => changedCodes.has(row.code)).map((row) => {
+      const merged = mergedByCode.get(String(row.code));
+      const applications = Array.isArray(merged?.applications) ? merged.applications : [];
+      return {
+        ...row,
+        append_data: {
+          description: merged?.description || '',
+          category: merged?.category || '',
+          product_line: merged?.product_line || '',
+          commercial_line: merged?.commercial_line || '',
+          synonyms: Array.isArray(merged?.synonyms) ? merged.synonyms : [],
+          applicationValues: applications.map((item) => item.application).filter(Boolean),
+          yearValues: applications.map((item) => item.year || '')
+        }
+      };
+    }),
     ...prepared
   };
   setToast(`${integer(pendingMatrixPatch.changes.length)} alteração(ões) pronta(s) para revisão.`, pendingMatrixPatch.missingCodes.length ? 'error' : 'success');

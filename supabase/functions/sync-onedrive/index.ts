@@ -25,6 +25,15 @@ type MatrixPatchRow = {
   yearProvided?: boolean;
   yearValues?: string[];
   base_price?: number;
+  append_data?: {
+    description?: string;
+    category?: string;
+    product_line?: string;
+    commercial_line?: string;
+    synonyms?: string[];
+    applicationValues?: string[];
+    yearValues?: string[];
+  };
 };
 type SyncRequest = {
   action?: "dispatch" | "dispatch_photos" | "check" | "download" | "connect_start" | "connect_complete" | "patch_matrix";
@@ -262,8 +271,24 @@ function sanitizeMatrixRows(rows: MatrixPatchRow[] | undefined): MatrixPatchRow[
       if (!Number.isFinite(price) || price <= 0 || price > 10_000_000) throw new Error(`Preco base invalido para o codigo ${code}.`);
       sanitized.base_price = Math.round(price * 100) / 100;
     }
-    const hasChange = Object.keys(sanitized).some((key) => key !== "code" && !key.endsWith("Provided") && key !== "applicationClear");
+    const hasChange = Object.keys(sanitized).some((key) => key !== "code" && key !== "append_data" && !key.endsWith("Provided") && key !== "applicationClear");
     if (!hasChange) throw new Error(`Nenhum campo informado para o codigo ${code}.`);
+    if (row.append_data && typeof row.append_data === "object") {
+      const appendData: NonNullable<MatrixPatchRow["append_data"]> = {};
+      for (const field of ["description", "category", "product_line", "commercial_line"] as const) {
+        if (Object.hasOwn(row.append_data, field)) {
+          appendData[field] = safeMatrixText(row.append_data[field], `Dados de inclusao: ${MATRIX_FIELDS[field].label}`, field === "description" ? 500 : 200);
+        }
+      }
+      if (Object.hasOwn(row.append_data, "synonyms")) appendData.synonyms = listText(row.append_data.synonyms || [], "Dados de inclusao: Sinonimos").split("; ").filter(Boolean);
+      if (Object.hasOwn(row.append_data, "applicationValues")) appendData.applicationValues = listText(row.append_data.applicationValues || [], "Dados de inclusao: Aplicacao").split("; ").filter(Boolean);
+      if (Object.hasOwn(row.append_data, "yearValues")) {
+        const years = Array.isArray(row.append_data.yearValues) ? row.append_data.yearValues : [];
+        if (years.length > 50) throw new Error("Dados de inclusao: Ano excede o limite de valores.");
+        appendData.yearValues = years.map((value) => safeMatrixText(value, "Dados de inclusao: Ano", 100));
+      }
+      sanitized.append_data = appendData;
+    }
     return sanitized;
   });
 }
@@ -289,6 +314,143 @@ function matrixFieldValues(row: MatrixPatchRow): Record<string, string | number>
   if (row.yearProvided) values.year = (row.yearValues || []).join("; ");
   if (Object.hasOwn(row, "base_price")) values.base_price = Number(row.base_price);
   return values;
+}
+
+function appendDataValues(row: MatrixPatchRow): Record<string, string | number> {
+  const source = row.append_data || {};
+  const values: Record<string, string | number> = {};
+  for (const field of ["description", "category", "product_line", "commercial_line"] as const) {
+    const value = String(source[field] || "").trim();
+    if (value) values[field] = value;
+  }
+  if (source.synonyms?.length) values.synonyms = source.synonyms.join("; ");
+  if (source.applicationValues?.length) values.application = source.applicationValues.join("; ");
+  if (source.yearValues?.some((value) => String(value || "").trim())) values.year = (source.yearValues || []).join("; ");
+  return values;
+}
+
+function headerValue(headers: string[], row: unknown[], aliases: string[]): unknown {
+  const index = headers.findIndex((header) => aliases.includes(header));
+  return index < 0 ? "" : row[index];
+}
+
+async function loadSapMatrixDefaults(
+  token: string,
+  itemId: string,
+  codes: string[],
+): Promise<Map<string, Record<string, string | number>>> {
+  const sheetName = encodeURIComponent("Cadastro Item SAP");
+  const used = await graphJson(
+    `${GRAPH_ROOT}/items/${itemId}/workbook/worksheets/${sheetName}/usedRange(valuesOnly=true)?%24select=values`, token,
+  );
+  const values = Array.isArray(used.values) ? used.values as unknown[][] : [];
+  const codeAliases = ["n_do_item", "codigo", "codigo_ips", "cod_ips", "item"];
+  const descriptionAliases = ["descricao_do_item", "descricao", "description", "nome"];
+  const headerOffset = values.findIndex((line) => {
+    const normalized = (Array.isArray(line) ? line : []).map(normalizeHeader);
+    return normalized.some((header) => codeAliases.includes(header))
+      && normalized.some((header) => descriptionAliases.includes(header));
+  });
+  if (headerOffset < 0) throw new Error("Cabecalho da aba Cadastro Item SAP nao reconhecido.");
+  const headers = (values[headerOffset] || []).map(normalizeHeader);
+  const wanted = new Set(codes);
+  const result = new Map<string, Record<string, string | number>>();
+  for (const row of values.slice(headerOffset + 1)) {
+    const code = String(headerValue(headers, row, codeAliases) ?? "").trim().replace(/\.0+$/, "");
+    if (!wanted.has(code) || result.has(code)) continue;
+    const text = (aliases: string[], label: string, maxLength = 300) => {
+      const value = String(headerValue(headers, row, aliases) ?? "").trim();
+      return value ? safeMatrixText(value, label, maxLength) : "";
+    };
+    const defaults: Record<string, string | number> = {};
+    const description = text(descriptionAliases, "Descricao SAP", 500);
+    const category = text(["grupo_de_itens", "categoria", "grupo"], "Categoria SAP", 200);
+    const brand = text(["marca", "fabricante"], "Marca SAP", 200);
+    const commercialLine = text([
+      "linha", "segmento", "tipo", "tipo_veiculo", "linha_veiculo", "linha_de_produto",
+      "categoria_veiculo", "categoria_de_veiculo", "segmento_veiculo", "classificacao",
+    ], "Linha SAP", 200);
+    const application = text(["modelo", "aplicacao", "veiculo"], "Aplicacao SAP", 300);
+    const year = text(["ano", "anos"], "Ano SAP", 100);
+    const synonyms = [
+      text(["oem_01", "oem", "similar"], "OEM SAP", 300),
+      text(["codigo_de_barras", "ean"], "Codigo de barras SAP", 300),
+    ].filter(Boolean);
+    if (description) defaults.description = description;
+    if (category) defaults.category = category;
+    if (brand) defaults.product_line = brand;
+    if (commercialLine) defaults.commercial_line = commercialLine;
+    if (application) defaults.application = application;
+    if (year) defaults.year = year;
+    if (synonyms.length) defaults.synonyms = synonyms.join("; ");
+    result.set(code, defaults);
+  }
+  return result;
+}
+
+type MatrixTable = { id: string; headers: string[] };
+
+async function findMatrixTable(token: string, itemId: string, sheetName: string): Promise<MatrixTable> {
+  const tables = await graphJson(
+    `${GRAPH_ROOT}/items/${itemId}/workbook/worksheets/${sheetName}/tables?%24select=id,name`, token,
+  );
+  for (const table of Array.isArray(tables.value) ? tables.value as Record<string, unknown>[] : []) {
+    const tableId = String(table.id || "");
+    if (!tableId) continue;
+    const headerRange = await graphJson(
+      `${GRAPH_ROOT}/items/${itemId}/workbook/tables/${encodeURIComponent(tableId)}/headerRowRange?%24select=values`, token,
+    );
+    const headers = (Array.isArray(headerRange.values) && Array.isArray(headerRange.values[0])
+      ? headerRange.values[0] as unknown[] : []).map(normalizeHeader);
+    if (headers.some((header) => CODE_HEADERS.includes(header))) return { id: tableId, headers };
+  }
+  throw new Error("A aba MATRIZ precisa estar formatada como tabela do Excel para incluir novos itens mantendo o padrao visual.");
+}
+
+async function addMatrixTableRows(
+  token: string,
+  itemId: string,
+  table: MatrixTable,
+  rows: MatrixPatchRow[],
+  sapDefaults: Map<string, Record<string, string | number>>,
+): Promise<number> {
+  if (!rows.length) return 0;
+  const codeColumn = table.headers.findIndex((header) => CODE_HEADERS.includes(header));
+  if (codeColumn < 0) throw new Error("Coluna de codigo nao encontrada na tabela MATRIZ.");
+  const fieldColumns = Object.fromEntries(Object.entries(MATRIX_FIELDS).map(([field, definition]) => [
+    field, table.headers.findIndex((header) => definition.aliases.includes(header)),
+  ]));
+  const values = rows.map((row) => {
+    const explicit = matrixFieldValues(row);
+    for (const field of Object.keys(explicit)) {
+      if (Number(fieldColumns[field]) < 0) throw new Error(`Coluna ${MATRIX_FIELDS[field].label} nao encontrada na tabela MATRIZ.`);
+    }
+    const fields = { ...(sapDefaults.get(String(row.code)) || {}), ...appendDataValues(row), ...explicit };
+    if (!String(fields.description || "").trim()) {
+      throw new Error(`Codigo ${row.code} nao encontrado com descricao no Cadastro Item SAP ou no portal.`);
+    }
+    const cells: (string | number | null)[] = Array(table.headers.length).fill(null);
+    cells[codeColumn] = String(row.code);
+    for (const [field, value] of Object.entries(fields)) {
+      const column = Number(fieldColumns[field]);
+      if (column >= 0) cells[column] = value;
+    }
+    return cells;
+  });
+  const response = await fetchWithRetry(
+    `${GRAPH_ROOT}/items/${itemId}/workbook/tables/${encodeURIComponent(table.id)}/rows/add`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ index: null, values }),
+    },
+  );
+  if (!response.ok) {
+    const failure = await response.json().catch(() => ({}));
+    throw new Error(`Nao foi possivel incluir novos itens na tabela MATRIZ (${response.status}, ${String(failure?.error?.code || "erro").replace(/[^a-z0-9_.-]/gi, "")}).`);
+  }
+  await response.body?.cancel().catch(() => {});
+  return rows.length;
 }
 
 async function findBackupFolder(token: string, parentFolderId: string): Promise<string | null> {
@@ -443,9 +605,13 @@ async function patchMatrixWorkbook(rows: MatrixPatchRow[]): Promise<Record<strin
       sourceRows.set(code, offsets);
     }
 
+    const missingRows: MatrixPatchRow[] = [];
     const updates = sanitized.flatMap((row) => {
       const rowOffsets = sourceRows.get(String(row.code)) || [];
-      if (!rowOffsets.length) throw new Error(`Codigo nao encontrado na aba MATRIZ: ${row.code}.`);
+      if (!rowOffsets.length) {
+        missingRows.push(row);
+        return [];
+      }
       if (rowOffsets.length > 1 && (row.applicationProvided || row.yearProvided)) {
         throw new Error(`O codigo ${row.code} possui varias linhas na MATRIZ. Atualize aplicacao e ano pela planilha completa.`);
       }
@@ -466,13 +632,22 @@ async function patchMatrixWorkbook(rows: MatrixPatchRow[]): Promise<Record<strin
       });
     });
 
+    let rowsAdded = 0;
+    if (missingRows.length) {
+      const [table, sapDefaults] = await Promise.all([
+        findMatrixTable(token, itemId, sheetName),
+        loadSapMatrixDefaults(token, itemId, missingRows.map((row) => String(row.code))),
+      ]);
+      rowsAdded = await addMatrixTableRows(token, itemId, table, missingRows, sapDefaults);
+    }
     for (let start = 0; start < updates.length; start += 10) {
       await applyWorkbookUpdates(token, itemId, sheetName, updates.slice(start, start + 10));
     }
     return {
       updated: true,
       rows_updated: sanitized.length,
-      sheet_rows_updated: updates.length,
+      sheet_rows_updated: updates.length + rowsAdded,
+      rows_added: rowsAdded,
       backup_name: backupName,
       backup_folder: BACKUP_FOLDER_NAME,
     };
