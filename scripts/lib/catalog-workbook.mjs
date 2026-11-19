@@ -206,7 +206,13 @@ function assertPublicFields(datasets) {
   }
 }
 
-export function parsePortalWorkbook(XLSX, bytes, name, maxRows = 50_000) {
+export function parsePortalWorkbook(
+  XLSX,
+  bytes,
+  name,
+  maxRows = 50_000,
+  requiredKinds = ["PRODUTOS", "PRECOS", "ESTOQUE"],
+) {
   const products = new Map();
   const prices = [];
   const stock = [];
@@ -354,8 +360,11 @@ export function parsePortalWorkbook(XLSX, bytes, name, maxRows = 50_000) {
     { kind: "ESTOQUE", rows: uniqueStock },
   ];
 
+  const required = new Set(requiredKinds);
   for (const dataset of datasets) {
-    if (!dataset.rows.length) throw new Error(`${name}: nenhuma linha valida para ${dataset.kind}.`);
+    if (!dataset.rows.length && required.has(dataset.kind)) {
+      throw new Error(`${name}: nenhuma linha valida para ${dataset.kind}.`);
+    }
     if (dataset.rows.length > maxRows) {
       throw new Error(`${name}: ${dataset.kind} excede o limite de ${maxRows} linhas.`);
     }

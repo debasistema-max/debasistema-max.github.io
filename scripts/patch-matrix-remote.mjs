@@ -133,10 +133,18 @@ try {
   const uploadUrl = String(prepared.data.upload_url);
   await uploadWorkbook(uploadUrl, outputBytes);
 
-  const parsed = parsePortalWorkbook(XLSX, outputBytes, "planilha-matriz-atualizada.xlsx");
+  const parsed = parsePortalWorkbook(
+    XLSX,
+    outputBytes,
+    "planilha-matriz-atualizada.xlsx",
+    50_000,
+    ["PRODUTOS"],
+  );
   const sourceName = `onedrive:matrix-patch:${jobId}`;
   const imports = [];
-  for (const dataset of parsed.datasets) imports.push(await importDataset(dataset, sourceName));
+  for (const dataset of parsed.datasets.filter((entry) => entry.kind === "PRODUTOS")) {
+    imports.push(await importDataset(dataset, sourceName));
+  }
   const summary = Object.fromEntries(imports.map((result) => [result.kind.toLowerCase(), result.rows]));
   Object.assign(summary, {
     operation: "MATRIX_PATCH",

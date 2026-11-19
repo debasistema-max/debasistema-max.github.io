@@ -174,3 +174,18 @@ test("separa marca da linha comercial do produto", () => {
   assert.equal(product.product_line, ["Yoko", "mitsu"].join(""));
   assert.equal(product.commercial_line, "Utilitário");
 });
+
+test("permite atualizar somente produtos sem exigir preços e estoques", () => {
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ["CODIGO", "DESCRICAO", "PRECO S/IMP"],
+    ["ABC-4", "Produto atualizado", 100],
+  ]), "MATRIZ");
+
+  const bytes = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+  const { datasets } = parsePortalWorkbook(XLSX, bytes, "parcial.xlsx", 50_000, ["PRODUTOS"]);
+
+  assert.equal(datasets.find((dataset) => dataset.kind === "PRODUTOS").rows.length, 1);
+  assert.equal(datasets.find((dataset) => dataset.kind === "PRECOS").rows.length, 0);
+  assert.equal(datasets.find((dataset) => dataset.kind === "ESTOQUE").rows.length, 0);
+});

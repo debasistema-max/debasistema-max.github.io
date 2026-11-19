@@ -109,6 +109,8 @@ describe('reconexão segura do OneDrive', () => {
     assert.match(patchScript, /fetch\(uploadUrl, \{ method: "DELETE" \}\)/);
     assert.match(patchScript, /A planilha permaneceu bloqueada no OneDrive/);
     assert.match(patchScript, /parsePortalWorkbook/);
+    assert.match(patchScript, /\["PRODUTOS"\]/);
+    assert.match(patchScript, /entry\.kind === "PRODUTOS"/);
     assert.match(patchWorkbook, /copy_row_template/);
     assert.match(patchWorkbook, /extend_filters_and_tables/);
   });
