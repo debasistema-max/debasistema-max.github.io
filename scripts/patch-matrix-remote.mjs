@@ -20,6 +20,43 @@ const headers = {
   "Content-Type": "application/json",
 };
 
+const RETRYABLE_UPLOAD_STATUS = new Set([423, 429, 500, 502, 503, 504]);
+
+function uploadRetryDelay(response, attempt) {
+  const retryAfter = String(response.headers.get("retry-after") || "").trim();
+  const seconds = Number(retryAfter);
+  if (Number.isFinite(seconds) && seconds > 0) return Math.min(60_000, Math.max(1_000, seconds * 1_000));
+  const retryDate = Date.parse(retryAfter);
+  if (Number.isFinite(retryDate)) return Math.min(60_000, Math.max(1_000, retryDate - Date.now()));
+  return Math.min(60_000, 5_000 * (2 ** attempt));
+}
+
+async function uploadWorkbook(uploadUrl, outputBytes) {
+  let lastStatus = 500;
+  for (let attempt = 0; attempt < 7; attempt += 1) {
+    const response = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Length": String(outputBytes.length),
+        "Content-Range": `bytes 0-${outputBytes.length - 1}/${outputBytes.length}`,
+      },
+      body: outputBytes,
+    });
+    const result = await response.json().catch(() => ({}));
+    if (response.ok && Number(result.size || 0) === outputBytes.length) return result;
+    lastStatus = response.status;
+    if (!RETRYABLE_UPLOAD_STATUS.has(response.status) || attempt === 6) break;
+    const delay = uploadRetryDelay(response, attempt);
+    console.warn(`OneDrive temporariamente indisponivel para gravacao (${response.status}); nova tentativa em ${Math.ceil(delay / 1_000)}s.`);
+    await new Promise((resolve) => setTimeout(resolve, delay));
+  }
+  if (lastStatus === 423) {
+    throw new Error("A planilha permaneceu bloqueada no OneDrive. Feche-a no Excel e tente novamente (423).");
+  }
+  throw new Error(`Microsoft recusou a gravacao da planilha (${lastStatus}).`);
+}
+
 async function updateJob(patch) {
   const response = await fetch(`${supabaseUrl}/rest/v1/sync_jobs?id=eq.${encodeURIComponent(jobId)}`, {
     method: "PATCH", headers: { ...headers, Prefer: "return=minimal" }, body: JSON.stringify(patch),
@@ -90,19 +127,7 @@ try {
     throw new Error(prepared.error || `Preparacao do backup falhou (${prepareResponse.status}).`);
   }
   const uploadUrl = String(prepared.data.upload_url);
-  const uploadResponse = await fetch(uploadUrl, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Length": String(outputBytes.length),
-      "Content-Range": `bytes 0-${outputBytes.length - 1}/${outputBytes.length}`,
-    },
-    body: outputBytes,
-  });
-  const uploadResult = await uploadResponse.json().catch(() => ({}));
-  if (!uploadResponse.ok || Number(uploadResult.size || 0) !== outputBytes.length) {
-    throw new Error(`Microsoft recusou a gravacao da planilha (${uploadResponse.status}).`);
-  }
+  await uploadWorkbook(uploadUrl, outputBytes);
 
   const parsed = parsePortalWorkbook(XLSX, outputBytes, "planilha-matriz-atualizada.xlsx");
   const sourceName = `onedrive:matrix-patch:${jobId}`;
