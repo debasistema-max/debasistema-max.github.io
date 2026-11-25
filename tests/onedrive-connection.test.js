@@ -43,6 +43,7 @@ describe('reconexão segura do OneDrive', () => {
     assert.match(syncFunction, /Atualizacao da MATRIZ temporariamente suspensa para proteger a planilha/);
     assert.match(syncFunction, /matrix_patch: "true"/);
     assert.match(syncFunction, /input\.action === "validate_matrix"/);
+    assert.match(syncFunction, /input\.action === "prepare_manual_sync"/);
     assert.match(syncFunction, /input\.action === "inspect_matrix_recovery"/);
     assert.match(syncFunction, /input\.action === "prepare_matrix_patch"/);
     assert.match(syncFunction, /input\.action === "apply_matrix_patch"/);
@@ -113,5 +114,7 @@ describe('reconexão segura do OneDrive', () => {
     assert.match(validateScript, /call\("validate_matrix"\)/);
     assert.match(validateScript, /call\("inspect_matrix_recovery"\)/);
     assert.match(validateScript, /result\?\.data\?\.valid/);
+    assert.match(workflow, /sync-onedrive-remote\.mjs/);
+    assert.match(readFileSync(new URL('../scripts/sync-onedrive-remote.mjs', import.meta.url), 'utf8'), /action: "prepare_manual_sync"/);
   });
 });

@@ -36,7 +36,7 @@ type MatrixPatchRow = {
   };
 };
 type SyncRequest = {
-  action?: "dispatch" | "dispatch_photos" | "check" | "download" | "validate_matrix" | "inspect_matrix_recovery" | "prepare_matrix_patch" | "apply_matrix_patch" | "connect_start" | "connect_complete" | "patch_matrix";
+  action?: "dispatch" | "dispatch_photos" | "check" | "download" | "prepare_manual_sync" | "validate_matrix" | "inspect_matrix_recovery" | "prepare_matrix_patch" | "apply_matrix_patch" | "connect_start" | "connect_complete" | "patch_matrix";
   job_id?: string;
   retry_failed?: boolean;
   device_code?: string;
@@ -911,6 +911,30 @@ async function secureWorkbookDownload(req: Request, jobId: string): Promise<Resp
   });
 }
 
+async function securePrepareManualSync(req: Request): Promise<Record<string, unknown>> {
+  if (!(await hasServiceRole(req))) throw new Error("Acesso de backend obrigatorio.");
+  const admin = createClient(requiredEnv("SUPABASE_URL"), requiredEnv("SUPABASE_SERVICE_ROLE_KEY"), {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data: activeJob, error: activeError } = await admin.from("sync_jobs")
+    .select("id,status").in("status", ["SOLICITADO", "EM_EXECUCAO"])
+    .order("requested_at", { ascending: false }).limit(1).maybeSingle();
+  if (activeError) throw activeError;
+  if (activeJob) throw new Error("Ja existe uma sincronizacao em andamento.");
+  const token = await graphToken();
+  const item = await resolveWorkbook(token);
+  if ((item.size ?? 0) <= 0 || (item.size ?? 0) > 20_000_000) throw new Error("Arquivo fora do limite permitido.");
+  const { data: job, error } = await admin.from("sync_jobs").insert({
+    requested_by: null,
+    status: "SOLICITADO",
+    source_size: item.size,
+    source_modified: item.lastModifiedDateTime ?? null,
+    summary: { operation: "CATALOG_SYNC", trigger: "GITHUB_MANUAL" },
+  }).select("id,status").single();
+  if (error || !job) throw new Error("Nao foi possivel preparar a sincronizacao manual.");
+  return { job_id: job.id, status: job.status };
+}
+
 async function secureValidateMatrix(req: Request): Promise<Record<string, unknown>> {
   if (!(await hasServiceRole(req))) throw new Error("Acesso de backend obrigatorio.");
   const token = await graphToken();
@@ -1020,6 +1044,9 @@ Deno.serve(async (req) => {
     const input = await req.json().catch(() => ({})) as SyncRequest;
     if (input.action === "download") {
       return await secureWorkbookDownload(req, String(input.job_id || ""));
+    }
+    if (input.action === "prepare_manual_sync") {
+      return jsonResponse(req, { data: await securePrepareManualSync(req) }, 201);
     }
     if (input.action === "validate_matrix") {
       return jsonResponse(req, { data: await secureValidateMatrix(req) });

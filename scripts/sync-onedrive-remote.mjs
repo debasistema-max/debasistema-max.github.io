@@ -10,12 +10,23 @@ function requiredEnv(name) {
 
 const supabaseUrl = requiredEnv("SUPABASE_URL").replace(/\/$/, "");
 const serviceRoleKey = requiredEnv("SUPABASE_SERVICE_ROLE_KEY");
-const jobId = requiredEnv("SYNC_JOB_ID");
 const headers = {
   apikey: serviceRoleKey,
   Authorization: `Bearer ${serviceRoleKey}`,
   "Content-Type": "application/json",
 };
+
+let jobId = process.env.SYNC_JOB_ID?.trim() || "";
+if (!jobId) {
+  const response = await fetch(`${supabaseUrl}/functions/v1/sync-onedrive`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ action: "prepare_manual_sync" }),
+  });
+  const result = await response.json().catch(() => ({}));
+  jobId = String(result?.data?.job_id || "");
+  if (!response.ok || !jobId) throw new Error(result?.error || `Falha ao preparar sincronizacao manual (${response.status}).`);
+}
 
 async function updateJob(patch) {
   const response = await fetch(`${supabaseUrl}/rest/v1/sync_jobs?id=eq.${encodeURIComponent(jobId)}`, {
