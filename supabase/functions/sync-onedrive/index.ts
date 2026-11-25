@@ -36,7 +36,7 @@ type MatrixPatchRow = {
   };
 };
 type SyncRequest = {
-  action?: "dispatch" | "dispatch_photos" | "check" | "download" | "validate_matrix" | "prepare_matrix_patch" | "apply_matrix_patch" | "connect_start" | "connect_complete" | "patch_matrix";
+  action?: "dispatch" | "dispatch_photos" | "check" | "download" | "validate_matrix" | "inspect_matrix_recovery" | "prepare_matrix_patch" | "apply_matrix_patch" | "connect_start" | "connect_complete" | "patch_matrix";
   job_id?: string;
   retry_failed?: boolean;
   device_code?: string;
@@ -934,6 +934,42 @@ async function secureValidateMatrix(req: Request): Promise<Record<string, unknow
   };
 }
 
+async function secureInspectMatrixRecovery(req: Request): Promise<Record<string, unknown>> {
+  if (!(await hasServiceRole(req))) throw new Error("Acesso de backend obrigatorio.");
+  const token = await graphToken();
+  const target = await resolveWorkbookTarget(token);
+  const versionsResult = await graphJson(
+    `${GRAPH_ROOT}/items/${encodeURIComponent(target.item.id)}/versions?%24select=id,lastModifiedDateTime,size`,
+    token,
+  );
+  const backupFolderId = await findBackupFolder(token, target.folderId);
+  let backups: GraphItem[] = [];
+  if (backupFolderId) {
+    const backupResult = await graphJson(
+      `${GRAPH_ROOT}/items/${encodeURIComponent(backupFolderId)}/children?%24select=id,name,size,lastModifiedDateTime,file&%24top=200`,
+      token,
+    );
+    backups = (Array.isArray(backupResult.value) ? backupResult.value : []) as GraphItem[];
+  }
+  const versions = (Array.isArray(versionsResult.value) ? versionsResult.value : []) as Array<Record<string, unknown>>;
+  return {
+    current: {
+      name: target.item.name,
+      size_bytes: Number(target.item.size || 0),
+      modified_at: target.item.lastModifiedDateTime || null,
+    },
+    versions: versions.slice(0, 50).map((version) => ({
+      id: String(version.id || ""),
+      size_bytes: Number(version.size || 0),
+      modified_at: version.lastModifiedDateTime || null,
+    })),
+    backups: backups.filter((item) => item.file && item.name.toLowerCase().endsWith(".xlsx"))
+      .sort((left, right) => String(right.lastModifiedDateTime || "").localeCompare(String(left.lastModifiedDateTime || "")))
+      .slice(0, 50)
+      .map((item) => ({ name: item.name, size_bytes: Number(item.size || 0), modified_at: item.lastModifiedDateTime || null })),
+  };
+}
+
 async function securePrepareMatrixPatch(req: Request, jobId: string): Promise<Record<string, unknown>> {
   if (!(await hasServiceRole(req))) throw new Error("Acesso de backend obrigatorio.");
   if (!/^[0-9a-f-]{36}$/i.test(jobId)) throw new Error("Solicitacao invalida.");
@@ -987,6 +1023,9 @@ Deno.serve(async (req) => {
     }
     if (input.action === "validate_matrix") {
       return jsonResponse(req, { data: await secureValidateMatrix(req) });
+    }
+    if (input.action === "inspect_matrix_recovery") {
+      return jsonResponse(req, { data: await secureInspectMatrixRecovery(req) });
     }
     if (input.action === "prepare_matrix_patch") {
       return jsonResponse(req, { data: await securePrepareMatrixPatch(req, String(input.job_id || "")) });
