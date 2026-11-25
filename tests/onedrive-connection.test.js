@@ -39,7 +39,7 @@ describe('reconexão segura do OneDrive', () => {
     assert.match(syncFunction, /offline_access Files\.ReadWrite/);
     assert.match(syncFunction, /input\.action === "patch_matrix"/);
     assert.match(syncFunction, /queueMatrixPatch\(user\.id, input\.rows \|\| \[\]\)/);
-    assert.match(syncFunction, /const MATRIX_PATCH_WRITE_ENABLED = false/);
+    assert.match(syncFunction, /const MATRIX_PATCH_WRITE_ENABLED = true/);
     assert.match(syncFunction, /Atualizacao da MATRIZ temporariamente suspensa para proteger a planilha/);
     assert.match(syncFunction, /matrix_patch: "true"/);
     assert.match(syncFunction, /input\.action === "validate_matrix"/);

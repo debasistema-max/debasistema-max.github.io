@@ -45,7 +45,7 @@ type SyncRequest = {
 
 const GRAPH_ROOT = "https://graph.microsoft.com/v1.0/me/drive";
 const BACKUP_FOLDER_NAME = "Backup DebaPortal";
-const MATRIX_PATCH_WRITE_ENABLED = false;
+const MATRIX_PATCH_WRITE_ENABLED = true;
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 const RETRYABLE_BATCH_STATUS = new Set([408, 409, 423, ...RETRYABLE_STATUS]);
 
