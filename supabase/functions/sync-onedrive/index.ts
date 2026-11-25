@@ -36,7 +36,7 @@ type MatrixPatchRow = {
   };
 };
 type SyncRequest = {
-  action?: "dispatch" | "dispatch_photos" | "check" | "download" | "prepare_matrix_upload" | "connect_start" | "connect_complete" | "patch_matrix";
+  action?: "dispatch" | "dispatch_photos" | "check" | "download" | "validate_matrix" | "prepare_matrix_patch" | "apply_matrix_patch" | "connect_start" | "connect_complete" | "patch_matrix";
   job_id?: string;
   retry_failed?: boolean;
   device_code?: string;
@@ -661,11 +661,10 @@ async function applyWorkbookUpdates(
   if (pending.length) throw new Error(`Falha temporaria ao atualizar ${pending.length} linha(s) da matriz (${lastStatus}). Tente novamente.`);
 }
 
-async function patchMatrixWorkbook(rows: MatrixPatchRow[]): Promise<Record<string, unknown>> {
+async function applyMatrixWorkbookChanges(rows: MatrixPatchRow[]): Promise<Record<string, unknown>> {
   const sanitized = sanitizeMatrixRows(rows);
   const token = await graphToken(true);
   const target = await resolveWorkbookTarget(token);
-  const backupName = await createWorkbookBackup(token, target);
   try {
     const itemId = encodeURIComponent(target.item.id);
     const sheetName = encodeURIComponent("MATRIZ");
@@ -768,11 +767,9 @@ async function patchMatrixWorkbook(rows: MatrixPatchRow[]): Promise<Record<strin
       rows_updated: sanitized.length,
       sheet_rows_updated: updates.length + rowsAdded,
       rows_added: rowsAdded,
-      backup_name: backupName,
-      backup_folder: BACKUP_FOLDER_NAME,
     };
   } catch (error) {
-    throw new Error(`${errorMessage(error)} Backup preservado: ${BACKUP_FOLDER_NAME}/${backupName}.`);
+    throw new Error(errorMessage(error));
   }
 }
 
@@ -914,51 +911,68 @@ async function secureWorkbookDownload(req: Request, jobId: string): Promise<Resp
   });
 }
 
-async function securePrepareMatrixUpload(req: Request, jobId: string): Promise<Record<string, unknown>> {
+async function secureValidateMatrix(req: Request): Promise<Record<string, unknown>> {
+  if (!(await hasServiceRole(req))) throw new Error("Acesso de backend obrigatorio.");
+  const token = await graphToken();
+  const target = await resolveWorkbookTarget(token);
+  const response = await fetchWithRetry(
+    `${GRAPH_ROOT}/items/${encodeURIComponent(target.item.id)}/workbook/worksheets?%24select=name`,
+    { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } },
+  );
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const code = String(result?.error?.code || "erro").replace(/[^a-z0-9_.-]/gi, "");
+    throw new Error(`A MATRIZ nao abriu no Excel Online (${response.status}, ${code}).`);
+  }
+  const names = (Array.isArray(result.value) ? result.value : []).map((sheet: { name?: string }) => String(sheet.name || ""));
+  if (!names.includes("MATRIZ")) throw new Error("A aba MATRIZ nao foi encontrada no arquivo restaurado.");
+  return {
+    valid: true,
+    size_bytes: Number(target.item.size || 0),
+    modified_at: target.item.lastModifiedDateTime || null,
+    sheet_count: names.length,
+  };
+}
+
+async function securePrepareMatrixPatch(req: Request, jobId: string): Promise<Record<string, unknown>> {
   if (!(await hasServiceRole(req))) throw new Error("Acesso de backend obrigatorio.");
   if (!/^[0-9a-f-]{36}$/i.test(jobId)) throw new Error("Solicitacao invalida.");
   const admin = createClient(requiredEnv("SUPABASE_URL"), requiredEnv("SUPABASE_SERVICE_ROLE_KEY"), {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const { data: job, error } = await admin.from("sync_jobs").select("id,status,summary").eq("id", jobId).maybeSingle();
-  if (error || !job || job.status !== "EM_EXECUCAO" || job.summary?.operation !== "MATRIX_PATCH") {
-    throw new Error("Solicitacao indisponivel para gravacao.");
+  const summary = (job?.summary || {}) as Record<string, unknown>;
+  if (error || !job || job.status !== "EM_EXECUCAO" || summary.operation !== "MATRIX_PATCH"
+    || !Array.isArray(summary.rows) || !summary.rows.length) {
+    throw new Error("Solicitacao indisponivel para backup.");
   }
   const token = await graphToken(true);
   const target = await resolveWorkbookTarget(token);
   const backupName = await createWorkbookBackup(token, target);
-  const sessionUrl = `${GRAPH_ROOT}/items/${encodeURIComponent(target.item.id)}/createUploadSession`;
-  const retryableSessionStatus = new Set([409, 423, 429, 500, 502, 503, 504]);
-  let session: Record<string, unknown> = {};
-  let sessionStatus = 500;
-  let sessionError = "erro";
-  for (let attempt = 0; attempt < 6; attempt += 1) {
-    const response = await fetch(sessionUrl, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ item: { "@microsoft.graph.conflictBehavior": "replace" } }),
-    });
-    session = await response.json().catch(() => ({}));
-    sessionStatus = response.status;
-    sessionError = String((session as { error?: { code?: string } })?.error?.code || "erro").replace(/[^a-z0-9_.-]/gi, "");
-    if (response.ok && session.uploadUrl) break;
-    if (!retryableSessionStatus.has(response.status) || attempt === 5) {
-      throw new Error(`Microsoft recusou a sessao de gravacao (${response.status}, ${sessionError}).`);
-    }
-    const retryAfter = Number(response.headers.get("retry-after") || 0) * 1000;
-    const delay = retryAfter > 0 ? Math.min(retryAfter, 15_000) : Math.min(15_000, 3_000 * (2 ** attempt));
-    await new Promise((resolve) => setTimeout(resolve, delay));
+  const updatedSummary = { ...summary, backup_name: backupName, backup_folder: BACKUP_FOLDER_NAME };
+  const { error: updateError } = await admin.from("sync_jobs").update({ summary: updatedSummary }).eq("id", jobId);
+  if (updateError) throw new Error("Backup criado, mas nao foi possivel registrar sua referencia.");
+  return { backup_name: backupName, backup_folder: BACKUP_FOLDER_NAME };
+}
+
+async function secureApplyMatrixPatch(req: Request, jobId: string): Promise<Record<string, unknown>> {
+  if (!(await hasServiceRole(req))) throw new Error("Acesso de backend obrigatorio.");
+  if (!/^[0-9a-f-]{36}$/i.test(jobId)) throw new Error("Solicitacao invalida.");
+  const admin = createClient(requiredEnv("SUPABASE_URL"), requiredEnv("SUPABASE_SERVICE_ROLE_KEY"), {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data: job, error } = await admin.from("sync_jobs").select("id,status,summary").eq("id", jobId).maybeSingle();
+  const summary = (job?.summary || {}) as Record<string, unknown>;
+  if (error || !job || job.status !== "EM_EXECUCAO" || summary.operation !== "MATRIX_PATCH"
+    || !Array.isArray(summary.rows) || !summary.rows.length || !summary.backup_name) {
+    throw new Error("Solicitacao indisponivel para alteracao segura.");
   }
-  if (!session.uploadUrl) throw new Error(`Microsoft recusou a sessao de gravacao (${sessionStatus}, ${sessionError}).`);
-  // The pre-authenticated destination is generated by Microsoft Graph itself.
-  // Microsoft can change the temporary host, so validate the transport without
-  // rewriting or restricting the hostname and send the URL back verbatim.
-  const rawUploadUrl = String(session.uploadUrl);
-  const uploadUrl = new URL(rawUploadUrl);
-  if (uploadUrl.protocol !== "https:" || uploadUrl.username || uploadUrl.password) {
-    throw new Error("Microsoft retornou destino de gravacao nao autorizado.");
-  }
-  return { upload_url: rawUploadUrl, backup_name: backupName, backup_folder: BACKUP_FOLDER_NAME };
+  const result = await applyMatrixWorkbookChanges(summary.rows as MatrixPatchRow[]);
+  return {
+    ...result,
+    backup_name: String(summary.backup_name),
+    backup_folder: String(summary.backup_folder || BACKUP_FOLDER_NAME),
+  };
 }
 
 Deno.serve(async (req) => {
@@ -971,8 +985,14 @@ Deno.serve(async (req) => {
     if (input.action === "download") {
       return await secureWorkbookDownload(req, String(input.job_id || ""));
     }
-    if (input.action === "prepare_matrix_upload") {
-      return jsonResponse(req, { data: await securePrepareMatrixUpload(req, String(input.job_id || "")) });
+    if (input.action === "validate_matrix") {
+      return jsonResponse(req, { data: await secureValidateMatrix(req) });
+    }
+    if (input.action === "prepare_matrix_patch") {
+      return jsonResponse(req, { data: await securePrepareMatrixPatch(req, String(input.job_id || "")) });
+    }
+    if (input.action === "apply_matrix_patch") {
+      return jsonResponse(req, { data: await secureApplyMatrixPatch(req, String(input.job_id || "")) });
     }
 
     const { user } = await requireAdmin(req);

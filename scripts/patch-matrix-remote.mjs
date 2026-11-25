@@ -1,7 +1,3 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { spawnSync } from "node:child_process";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
 import * as XLSX from "xlsx";
 import { parsePortalWorkbook } from "./lib/catalog-workbook.mjs";
 
@@ -20,52 +16,22 @@ const headers = {
   "Content-Type": "application/json",
 };
 
-const RETRYABLE_UPLOAD_STATUS = new Set([409, 423, 429, 500, 502, 503, 504]);
-
-function uploadRetryDelay(response, attempt) {
-  const retryAfter = String(response.headers.get("retry-after") || "").trim();
-  const seconds = Number(retryAfter);
-  if (Number.isFinite(seconds) && seconds > 0) return Math.min(60_000, Math.max(1_000, seconds * 1_000));
-  const retryDate = Date.parse(retryAfter);
-  if (Number.isFinite(retryDate)) return Math.min(60_000, Math.max(1_000, retryDate - Date.now()));
-  return Math.min(60_000, 5_000 * (2 ** attempt));
-}
-
-async function uploadWorkbook(uploadUrl, outputBytes) {
-  let lastStatus = 500;
-  for (let attempt = 0; attempt < 7; attempt += 1) {
-    const response = await fetch(uploadUrl, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Length": String(outputBytes.length),
-        "Content-Range": `bytes 0-${outputBytes.length - 1}/${outputBytes.length}`,
-      },
-      body: outputBytes,
-    });
-    const result = await response.json().catch(() => ({}));
-    if (response.ok && Number(result.size || 0) === outputBytes.length) return result;
-    lastStatus = response.status;
-    if (!RETRYABLE_UPLOAD_STATUS.has(response.status) || attempt === 6) break;
-    const delay = uploadRetryDelay(response, attempt);
-    console.warn(`OneDrive temporariamente indisponivel para gravacao (${response.status}); nova tentativa em ${Math.ceil(delay / 1_000)}s.`);
-    await new Promise((resolve) => setTimeout(resolve, delay));
-  }
-  try {
-    const cancelResponse = await fetch(uploadUrl, { method: "DELETE" });
-    await cancelResponse.body?.cancel();
-  } catch {}
-  if (lastStatus === 423) {
-    throw new Error("A planilha permaneceu bloqueada no OneDrive. Feche-a no Excel e tente novamente (423).");
-  }
-  throw new Error(`Microsoft recusou a gravacao da planilha (${lastStatus}).`);
-}
-
 async function updateJob(patch) {
   const response = await fetch(`${supabaseUrl}/rest/v1/sync_jobs?id=eq.${encodeURIComponent(jobId)}`, {
     method: "PATCH", headers: { ...headers, Prefer: "return=minimal" }, body: JSON.stringify(patch),
   });
   if (!response.ok) throw new Error(`Falha ao atualizar a solicitacao (${response.status}).`);
+}
+
+async function callSyncFunction(action) {
+  const response = await fetch(`${supabaseUrl}/functions/v1/sync-onedrive`, {
+    method: "POST", headers, body: JSON.stringify({ action, job_id: jobId }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || result?.error || !result?.data) {
+    throw new Error(result?.error || `${action}: operacao recusada (${response.status}).`);
+  }
+  return result.data;
 }
 
 async function importDataset(dataset, sourceName) {
@@ -79,10 +45,10 @@ async function importDataset(dataset, sourceName) {
   return { kind: dataset.kind, rows: dataset.rows.length };
 }
 
-let workDir = null;
+let prepared = null;
 try {
   const jobResponse = await fetch(
-    `${supabaseUrl}/rest/v1/sync_jobs?id=eq.${encodeURIComponent(jobId)}&select=id,status,source_size,source_modified,summary`,
+    `${supabaseUrl}/rest/v1/sync_jobs?id=eq.${encodeURIComponent(jobId)}&select=id,status,summary`,
     { headers },
   );
   if (!jobResponse.ok) throw new Error(`Solicitacao indisponivel (${jobResponse.status}).`);
@@ -93,45 +59,20 @@ try {
   }
 
   await updateJob({ status: "EM_EXECUCAO", started_at: new Date().toISOString(), finished_at: null, error_message: null });
+  prepared = await callSyncFunction("prepare_matrix_patch");
+  const applied = await callSyncFunction("apply_matrix_patch");
+
   const fileResponse = await fetch(`${supabaseUrl}/functions/v1/sync-onedrive`, {
     method: "POST", headers, body: JSON.stringify({ action: "download", job_id: jobId }),
   });
   if (!fileResponse.ok) {
     const failure = await fileResponse.json().catch(() => ({}));
-    throw new Error(failure.error || `Download seguro falhou (${fileResponse.status}).`);
+    throw new Error(failure.error || `Download de verificacao falhou (${fileResponse.status}).`);
   }
-  const inputBytes = Buffer.from(await fileResponse.arrayBuffer());
-  if (!inputBytes.length || inputBytes.length > 20_000_000 || inputBytes.subarray(0, 4).join(",") !== "80,75,3,4") {
-    throw new Error("Conteudo XLSX de entrada invalido.");
-  }
-
-  workDir = await mkdtemp(join(tmpdir(), "debaportal-matrix-"));
-  const inputPath = join(workDir, "entrada.xlsx");
-  const outputPath = join(workDir, "saida.xlsx");
-  const payloadPath = join(workDir, "alteracoes.json");
-  await Promise.all([
-    writeFile(inputPath, inputBytes),
-    writeFile(payloadPath, JSON.stringify(patchRows), "utf8"),
-  ]);
-  const python = spawnSync("python", ["scripts/patch-matrix-workbook.py", inputPath, outputPath, payloadPath], {
-    cwd: process.cwd(), encoding: "utf8", maxBuffer: 2_000_000,
-  });
-  if (python.status !== 0) throw new Error(String(python.stderr || python.stdout || "Falha ao alterar a MATRIZ.").trim());
-  const patchSummary = JSON.parse(String(python.stdout || "{}").trim());
-  const outputBytes = await readFile(outputPath);
+  const outputBytes = Buffer.from(await fileResponse.arrayBuffer());
   if (!outputBytes.length || outputBytes.length > 20_000_000 || outputBytes.subarray(0, 4).join(",") !== "80,75,3,4") {
-    throw new Error("Conteudo XLSX de saida invalido.");
+    throw new Error("Conteudo XLSX de verificacao invalido.");
   }
-
-  const prepareResponse = await fetch(`${supabaseUrl}/functions/v1/sync-onedrive`, {
-    method: "POST", headers, body: JSON.stringify({ action: "prepare_matrix_upload", job_id: jobId }),
-  });
-  const prepared = await prepareResponse.json().catch(() => ({}));
-  if (!prepareResponse.ok || !prepared?.data?.upload_url) {
-    throw new Error(prepared.error || `Preparacao do backup falhou (${prepareResponse.status}).`);
-  }
-  const uploadUrl = String(prepared.data.upload_url);
-  await uploadWorkbook(uploadUrl, outputBytes);
 
   const parsed = parsePortalWorkbook(
     XLSX,
@@ -148,10 +89,11 @@ try {
   const summary = Object.fromEntries(imports.map((result) => [result.kind.toLowerCase(), result.rows]));
   Object.assign(summary, {
     operation: "MATRIX_PATCH",
-    rows_updated: Number(patchSummary.rows_updated || patchRows.length),
-    rows_added: Number(patchSummary.rows_added || 0),
-    backup_name: String(prepared.data.backup_name || ""),
-    backup_folder: String(prepared.data.backup_folder || ""),
+    rows_updated: Number(applied.rows_updated || patchRows.length),
+    rows_added: Number(applied.rows_added || 0),
+    backup_name: String(prepared.backup_name || applied.backup_name || ""),
+    backup_folder: String(prepared.backup_folder || applied.backup_folder || ""),
+    write_method: "MICROSOFT_GRAPH_CELLS",
   });
   await updateJob({ status: "CONCLUIDO", summary, source_download_url: null, finished_at: new Date().toISOString() });
   console.log(JSON.stringify({ updated: true, summary }));
@@ -159,12 +101,14 @@ try {
   const message = error instanceof Error ? error.message : "Erro inesperado.";
   try {
     await updateJob({
-      status: "FALHOU", summary: { operation: "MATRIX_PATCH" },
+      status: "FALHOU",
+      summary: {
+        operation: "MATRIX_PATCH",
+        ...(prepared?.backup_name ? { backup_name: prepared.backup_name, backup_folder: prepared.backup_folder } : {}),
+      },
       error_message: message.slice(0, 1000), source_download_url: null, finished_at: new Date().toISOString(),
     });
   } catch {}
   console.error(message);
   process.exitCode = 1;
-} finally {
-  if (workDir) await rm(workDir, { recursive: true, force: true });
 }

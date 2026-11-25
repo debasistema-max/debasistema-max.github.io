@@ -17,6 +17,11 @@ on:
         required: false
         default: false
         type: boolean
+      matrix_validate:
+        description: Validacao somente leitura da planilha matriz
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -43,7 +48,7 @@ jobs:
         run: npm ci
 
       - name: Processar solicitação
-        if: ${{ inputs.photos_only != true && inputs.matrix_patch != true }}
+        if: ${{ inputs.photos_only != true && inputs.matrix_patch != true && inputs.matrix_validate != true }}
         run: node scripts/sync-onedrive-remote.mjs
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -62,10 +67,6 @@ jobs:
           PRODUCT_CATALOG_API_URL: ${{ secrets.PRODUCT_CATALOG_API_URL }}
           PRODUCT_IMAGE_ORIGIN: ${{ secrets.PRODUCT_IMAGE_ORIGIN }}
 
-      - name: Instalar suporte Excel
-        if: ${{ inputs.matrix_patch == true }}
-        run: python -m pip install --disable-pip-version-check openpyxl==3.1.5
-
       - name: Atualizar matriz no OneDrive
         if: ${{ inputs.matrix_patch == true }}
         run: node scripts/patch-matrix-remote.mjs
@@ -73,3 +74,10 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SYNC_JOB_ID: ${{ inputs.job_id }}
+
+      - name: Validar matriz sem alterar
+        if: ${{ inputs.matrix_validate == true }}
+        run: node scripts/validate-matrix-remote.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
