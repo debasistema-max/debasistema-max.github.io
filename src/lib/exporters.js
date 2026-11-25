@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { classifyCommercialLine } from './commercial-line.js';
 import { commercialApplicationValues, commercialYearValues, money, safeFileName, stockLevel, stockQuantity } from './utils.js';
 
 function triggerDownload(blob, fileName) {
@@ -61,6 +62,12 @@ export function commercialRows(items, stockMode = 'ORIGIN') {
       'Código IPS': itemValue(item, 'code'),
       Descrição: itemValue(item, 'description'),
       Marca: itemValue(item, 'brand'),
+      Linha: classifyCommercialLine({
+        commercialLine: itemValue(item, 'product_line'),
+        description: itemValue(item, 'description'),
+        category: itemValue(item, 'category'),
+        applications: itemValue(item, 'applications', []),
+      }),
       Aplicação: commercialApplicationValues(itemValue(item, 'applications', [])).join('; '),
       Ano: commercialYearValues(itemValue(item, 'years', []), itemValue(item, 'applications', [])).join('; '),
       'Preço s/ impostos': itemValue(item, 'base_price', null),
@@ -101,11 +108,12 @@ function styleCommercialSheet(sheet, rowCount, headers) {
     const column = XLSX.utils.encode_col(index);
     if (sheet[`${column}2`]) sheet[`${column}2`].s = headerStyle;
   });
+  const currencyColumns = ['Preço s/ impostos', 'Preço c/ impostos'].map((header) => XLSX.utils.encode_col(headers.indexOf(header)));
   for (let row = 3; row <= rowCount + 2; row += 1) {
-    for (const column of ['F', 'G']) if (sheet[`${column}${row}`]) sheet[`${column}${row}`].z = 'R$ #,##0.00';
+    for (const column of currencyColumns) if (sheet[`${column}${row}`]) sheet[`${column}${row}`].z = 'R$ #,##0.00';
   }
   sheet['!rows'] = [{ hpt: 28 }, { hpt: 24 }];
-  const widths = { 'Código IPS': 17, Descrição: 38, Marca: 18, Aplicação: 48, Ano: 18, 'Preço s/ impostos': 20, 'Preço c/ impostos': 20, Estoque: 18, Quantidade: 14, 'Estoque PR': 18, 'Qtd. PR': 12, 'Estoque SP': 18, 'Qtd. SP': 12 };
+  const widths = { 'Código IPS': 17, Descrição: 38, Marca: 18, Linha: 14, Aplicação: 48, Ano: 18, 'Preço s/ impostos': 20, 'Preço c/ impostos': 20, Estoque: 18, Quantidade: 14, 'Estoque PR': 18, 'Qtd. PR': 12, 'Estoque SP': 18, 'Qtd. SP': 12 };
   sheet['!cols'] = headers.map((header) => ({ wch: widths[header] || 16 }));
   const lastColumn = XLSX.utils.encode_col(headers.length - 1);
   sheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } }];
@@ -119,7 +127,7 @@ export function buildExcelWorkbook({ title, items, context = {}, variant = 'docu
     const stockMode = context.stockMode === 'BOTH' ? 'BOTH' : 'ORIGIN';
     const rows = commercialRows(items, stockMode);
     const routeCode = context.routeCode || `${context.originCode || '—'}-${context.destinationState || '—'}`;
-    const headers = ['Código IPS', 'Descrição', 'Marca', 'Aplicação', 'Ano', 'Preço s/ impostos', 'Preço c/ impostos', ...(stockMode === 'BOTH' ? ['Estoque PR', 'Qtd. PR', 'Estoque SP', 'Qtd. SP'] : ['Estoque', 'Quantidade'])];
+    const headers = ['Código IPS', 'Descrição', 'Marca', 'Linha', 'Aplicação', 'Ano', 'Preço s/ impostos', 'Preço c/ impostos', ...(stockMode === 'BOTH' ? ['Estoque PR', 'Qtd. PR', 'Estoque SP', 'Qtd. SP'] : ['Estoque', 'Quantidade'])];
     const values = [
       [`LISTA ${routeCode}`],
       headers,
@@ -339,11 +347,12 @@ function buildCommercialPdf(doc, payload) {
     startY: 40,
     margin: { top: 12, right: 12, bottom: 12, left: 12 },
     tableWidth: 273,
-    head: [['Código IPS', 'Descrição', 'Marca', 'Aplicação', 'Ano', 'Preço s/ impostos', 'Preço c/ impostos', ...stockHeaders]],
+    head: [['Código IPS', 'Descrição', 'Marca', 'Linha', 'Aplicação', 'Ano', 'Preço s/ impostos', 'Preço c/ impostos', ...stockHeaders]],
     body: rows.map((row) => [
       row['Código IPS'],
       row.Descrição,
       row.Marca || '—',
+      row.Linha || 'Leve',
       row.Aplicação || '—',
       row.Ano || '—',
       row['Preço s/ impostos'] === null ? '—' : money(row['Preço s/ impostos']),
@@ -353,20 +362,21 @@ function buildCommercialPdf(doc, payload) {
         : [row.Estoque, row.Quantidade])
     ]),
     theme: 'plain',
-    styles: { fontSize: bothStocks ? 6.5 : 7.2, minCellWidth: 0, cellPadding: { top: 2.5, right: 2, bottom: 2.5, left: 2 }, overflow: 'linebreak', valign: 'middle', lineColor: [222, 230, 238], lineWidth: { bottom: .15 } },
+    styles: { fontSize: bothStocks ? 6.5 : 7.2, minCellWidth: 0, cellPadding: { top: 2.5, right: 1, bottom: 2.5, left: 1 }, overflow: 'linebreak', valign: 'middle', lineColor: [222, 230, 238], lineWidth: { bottom: .15 } },
     headStyles: { fillColor: [227, 238, 247], textColor: [11, 31, 58], fontStyle: 'bold', fontSize: bothStocks ? 6.4 : 7.2, minCellHeight: 8 },
     alternateRowStyles: { fillColor: [248, 251, 253] },
     columnStyles: {
-      0: { cellWidth: bothStocks ? 20 : 22, fontStyle: 'bold', textColor: [11, 31, 58] },
-      1: { cellWidth: bothStocks ? 38 : 42 },
-      2: { cellWidth: bothStocks ? 18 : 22 },
-      3: { cellWidth: bothStocks ? 52 : 62 },
-      4: { cellWidth: bothStocks ? 19 : 22 },
-      5: { cellWidth: bothStocks ? 23 : 27, halign: 'right' },
-      6: { cellWidth: bothStocks ? 23 : 27, halign: 'right', fontStyle: 'bold' },
-      7: { cellWidth: bothStocks ? 20 : 29 },
-      8: { cellWidth: 20, halign: 'right' },
-      ...(bothStocks ? { 9: { cellWidth: 20 }, 10: { cellWidth: 20, halign: 'right' } } : {})
+      0: { cellWidth: bothStocks ? 18 : 20, fontStyle: 'bold', textColor: [11, 31, 58] },
+      1: { cellWidth: bothStocks ? 34 : 38 },
+      2: { cellWidth: bothStocks ? 16 : 18 },
+      3: { cellWidth: 18 },
+      4: { cellWidth: bothStocks ? 42 : 56 },
+      5: { cellWidth: bothStocks ? 16 : 18 },
+      6: { cellWidth: bothStocks ? 20 : 24, halign: 'right' },
+      7: { cellWidth: bothStocks ? 20 : 24, halign: 'right', fontStyle: 'bold' },
+      8: { cellWidth: bothStocks ? 23 : 29 },
+      9: { cellWidth: bothStocks ? 14 : 18, halign: 'right' },
+      ...(bothStocks ? { 10: { cellWidth: 23 }, 11: { cellWidth: 14, halign: 'right' } } : {})
     },
     didDrawPage: () => {
       doc.setFontSize(7);

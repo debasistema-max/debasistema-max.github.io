@@ -1,3 +1,5 @@
+import { classifyCommercialLine, normalizeCommercialLine } from './commercial-line.js';
+
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
 const MAX_ROWS = 20_000;
 
@@ -42,11 +44,7 @@ function splitValues(value) {
 }
 
 function commercialLineValue(value) {
-  const normalized = String(value || '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  if (/^(?:u|utilitario|utilitarios)$|\butilit/.test(normalized)) return 'Utilitário';
-  if (/^(?:p|pesada|pesado|pesadas|pesados)$|\b(?:pesad|caminh|onibus|truck)/.test(normalized)) return 'Pesada';
-  if (/^(?:l|leve|leves)$|\b(?:leve|passeio)/.test(normalized)) return 'Leve';
-  return null;
+  return normalizeCommercialLine(value) || null;
 }
 
 function canonicalizeRow(row) {
@@ -57,10 +55,15 @@ function canonicalizeRow(row) {
     description: String(first(row, ['description', 'descricao', 'produto', 'nome']) || '').trim(),
     category: first(row, ['category', 'categoria', 'grupo']),
     product_line: first(row, ['brand', 'marca', 'fabricante']),
-    commercial_line: commercialLineValue(first(row, [
-      'commercial_line', 'linha', 'linha_produto', 'segmento', 'tipo', 'tipo_veiculo',
-      'linha_veiculo', 'categoria_veiculo', 'classificacao'
-    ])),
+    commercial_line: classifyCommercialLine({
+      commercialLine: commercialLineValue(first(row, [
+        'commercial_line', 'linha', 'linha_produto', 'segmento', 'tipo', 'tipo_veiculo',
+        'linha_veiculo', 'categoria_veiculo', 'classificacao'
+      ])),
+      description: first(row, ['description', 'descricao', 'produto', 'nome']),
+      category: first(row, ['category', 'categoria', 'grupo']),
+      applications: applicationValues,
+    }),
     synonyms: splitValues(first(row, ['synonyms', 'sinonimos', 'similares', 'similar', 'oem'])),
     applications: applicationValues.map((application) => ({ application })),
     price: numberValue(first(row, ['price', 'preco', 'valor', 'preco_unitario', 'pr_unit_c_i', 'pr_apos_desc'])),

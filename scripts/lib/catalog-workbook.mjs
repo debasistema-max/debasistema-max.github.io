@@ -1,4 +1,6 @@
 const SOURCE_ROUTES = ["PR-PR", "SP-SP", "PR-SC"];
+import { classifyCommercialLine, normalizeCommercialLine } from "../../src/lib/commercial-line.js";
+
 const BRANCHES = ["PR", "SP"];
 const FORBIDDEN_BRANDS = new RegExp(
   `\\b(?:${["I", "P", "S"].join("")}(?:\\s+do\\s+Brasil)?|${["Yoko", "mitsu"].join("")}|${["R", "T"].join("\\s*")}\\s*Group)\\b`,
@@ -30,14 +32,7 @@ export function productBrandText(value, max = 200) {
 }
 
 export function commercialLine(value) {
-  const normalized = cleanText(value, 100)
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-  if (/^(?:u|utilitario|utilitarios)$|\butilit/.test(normalized)) return "Utilitário";
-  if (/^(?:p|pesada|pesado|pesadas|pesados)$|\b(?:pesad|caminh|onibus|truck)/.test(normalized)) return "Pesada";
-  if (/^(?:l|leve|leves)$|\b(?:leve|passeio)/.test(normalized)) return "Leve";
-  return "";
+  return normalizeCommercialLine(cleanText(value, 100));
 }
 
 function headerKey(value) {
@@ -339,7 +334,13 @@ export function parsePortalWorkbook(
       description: product.description,
       category: product.category,
       product_line: product.product_line,
-      commercial_line: product.commercial_line,
+      commercial_line: classifyCommercialLine({
+        commercialLine: product.commercial_line,
+        description: product.description,
+        category: product.category,
+        applications: product.applications,
+        synonyms: product.synonyms,
+      }),
       synonyms: [...product.synonyms],
       applications: [...product.applications.values()],
     }));

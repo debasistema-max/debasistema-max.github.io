@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { config, hasSupabaseConfig } from '../config.js';
 import { encodeFilterSelection, matchesFilterSelection } from '../lib/catalog-filters.js';
+import { classifyCommercialLine } from '../lib/commercial-line.js';
 import { uniqueTextValues, uuid } from '../lib/utils.js';
 
 const demoProducts = [
@@ -34,14 +35,22 @@ async function invocationError(error) {
 
 function normalizeProduct(row) {
   const nullableNumber = (value) => value === null || value === undefined || value === '' ? null : Number(value);
+  const applications = uniqueTextValues(Array.isArray(row.applications) ? row.applications : [row.application || row.aplicacao || '']);
+  const commercialLine = classifyCommercialLine({
+    commercialLine: row.commercial_line !== undefined ? row.commercial_line : (row.product_line ?? row.linha),
+    description: row.description || row.descricao || '',
+    category: row.category || row.categoria || '',
+    applications,
+    synonyms: row.synonyms || [],
+  });
   return {
     id: row.id || row.product_id,
     code: row.code || row.codigo || '',
     description: row.description || row.descricao || '',
-    applications: uniqueTextValues(Array.isArray(row.applications) ? row.applications : [row.application || row.aplicacao || '']),
+    applications,
     years: uniqueTextValues(Array.isArray(row.application_years) ? row.application_years : (Array.isArray(row.years) ? row.years : [row.year || row.ano || ''])),
     category: row.category || row.categoria || '',
-    product_line: row.commercial_line ?? row.product_line ?? row.linha ?? '',
+    product_line: commercialLine,
     brand: row.brand ?? row.marca ?? (row.commercial_line !== undefined ? row.product_line : ''),
     base_price: nullableNumber(row.base_price ?? row.preco_base ?? row.preco_sem_impostos),
     price: nullableNumber(row.price ?? row.preco),

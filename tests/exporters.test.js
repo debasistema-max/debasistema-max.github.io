@@ -16,19 +16,20 @@ test('lista comercial separa aplicação e ano e omite atualização', () => {
   const [row] = commercialRows(payload.items);
   assert.equal(row.Aplicação, 'Veículo / Modelo');
   assert.equal(row.Ano, '2018–...');
+  assert.equal(row.Linha, 'Leve');
   assert.equal(Object.hasOwn(row, 'Atualização'), false);
   assert.equal(commercialRows([...payload.items, { ...payload.items[0] }]).length, 1);
 
   const workbook = buildExcelWorkbook(payload);
   const sheet = workbook.Sheets['LISTA PR-SC'];
   assert.equal(sheet.A1.v, 'LISTA PR-SC');
-  assert.deepEqual(['A2', 'B2', 'C2', 'D2', 'E2', 'F2', 'G2', 'H2', 'I2'].map((cell) => sheet[cell].v), [
-    'Código IPS', 'Descrição', 'Marca', 'Aplicação', 'Ano', 'Preço s/ impostos', 'Preço c/ impostos', 'Estoque', 'Quantidade'
+  assert.deepEqual(['A2', 'B2', 'C2', 'D2', 'E2', 'F2', 'G2', 'H2', 'I2', 'J2'].map((cell) => sheet[cell].v), [
+    'Código IPS', 'Descrição', 'Marca', 'Linha', 'Aplicação', 'Ano', 'Preço s/ impostos', 'Preço c/ impostos', 'Estoque', 'Quantidade'
   ]);
-  assert.equal(sheet.F3.v, 100);
-  assert.equal(sheet.G3.v, 110);
-  assert.equal(sheet.H3.v, 'CONFIRMAR');
-  assert.equal(sheet.I3.v, '8');
+  assert.equal(sheet.G3.v, 100);
+  assert.equal(sheet.H3.v, 110);
+  assert.equal(sheet.I3.v, 'CONFIRMAR');
+  assert.equal(sheet.J3.v, '8');
   assert.equal(Object.values(sheet).some((cell) => cell?.v === 'Atualização'), false);
 });
 
@@ -48,8 +49,8 @@ test('lista comercial exibe +50 quando o estoque atualizado atinge o limite', ()
 
   const workbook = buildExcelWorkbook({ ...payload, items: [item] });
   const sheet = workbook.Sheets['LISTA PR-SC'];
-  assert.equal(sheet.H3.v, 'DISPONÍVEL');
-  assert.equal(sheet.I3.v, '+50');
+  assert.equal(sheet.I3.v, 'DISPONÍVEL');
+  assert.equal(sheet.J3.v, '+50');
 });
 
 test('lista comercial pode exibir estoques separados de PR e SP', () => {
@@ -64,9 +65,9 @@ test('lista comercial pode exibir estoques separados de PR e SP', () => {
   const twoStocksPayload = { ...payload, items: [item], context: { ...payload.context, stockMode: 'BOTH' } };
   const workbook = buildExcelWorkbook(twoStocksPayload);
   const sheet = workbook.Sheets['LISTA PR-SC'];
-  assert.deepEqual(['H2', 'I2', 'J2', 'K2'].map((cell) => sheet[cell].v), ['Estoque PR', 'Qtd. PR', 'Estoque SP', 'Qtd. SP']);
-  assert.deepEqual(['H3', 'I3', 'J3', 'K3'].map((cell) => sheet[cell].v), ['DISPONÍVEL', '+50', 'CONFIRMAR', '12']);
-  assert.equal(sheet['!autofilter'].ref, 'A2:K3');
+  assert.deepEqual(['I2', 'J2', 'K2', 'L2'].map((cell) => sheet[cell].v), ['Estoque PR', 'Qtd. PR', 'Estoque SP', 'Qtd. SP']);
+  assert.deepEqual(['I3', 'J3', 'K3', 'L3'].map((cell) => sheet[cell].v), ['DISPONÍVEL', '+50', 'CONFIRMAR', '12']);
+  assert.equal(sheet['!autofilter'].ref, 'A2:L3');
 
   const pdf = buildPdfDocument(twoStocksPayload);
   assert.ok(Buffer.from(pdf.output('arraybuffer')).length > 2_000);

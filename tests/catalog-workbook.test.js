@@ -175,6 +175,23 @@ test("separa marca da linha comercial do produto", () => {
   assert.equal(product.commercial_line, "Utilitário");
 });
 
+test("classifica automaticamente linhas leve, pesada e utilitario", () => {
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ["CODIGO", "DESCRICAO", "APLICACAO", "PRECO S/IMP"],
+    ["L-1", "FAROL PRINCIPAL", "ASTRA", 100],
+    ["P-1", "AMORTECEDOR", "VOLVO FH", 200],
+    ["U-1", "CAIXA DE DIRECAO", "HILUX", 300],
+  ]), "MATRIZ");
+
+  const bytes = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+  const { datasets } = parsePortalWorkbook(XLSX, bytes, "linhas.xlsx", 50_000, ["PRODUTOS"]);
+  const products = Object.fromEntries(datasets.find((dataset) => dataset.kind === "PRODUTOS").rows
+    .map((product) => [product.code, product.commercial_line]));
+
+  assert.deepEqual(products, { "L-1": "Leve", "P-1": "Pesada", "U-1": "Utilitário" });
+});
+
 test("permite atualizar somente produtos sem exigir preços e estoques", () => {
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([

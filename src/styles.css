@@ -268,6 +268,7 @@ svg { display: block; width: 22px; height: 22px; }
 .commercial-list-table td > strong, .commercial-list-table td > small { display: block; }
 .commercial-list-table td > small { margin-top: 4px; color: var(--slate-500); font-size: .68rem; }
 .commercial-list-table .code-chip { display: inline-block; }
+.commercial-line-chip { display: inline-block; border-radius: 999px; background: var(--blue-100); color: var(--navy-800); padding: 4px 8px; font-size: .72rem; font-weight: 800; white-space: nowrap; }
 .commercial-list-table .stock-badge { white-space: nowrap; }
 .commercial-list-table .list-price { color: var(--navy-900); font-weight: 800; white-space: nowrap; }
 .list-check-cell { width: 58px; text-align: center; }

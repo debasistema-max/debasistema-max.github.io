@@ -284,6 +284,7 @@ function commercialListResults() {
       <td data-label="Código IPS"><span class="code-chip">${escapeHtml(product.code)}</span></td>
       <td data-label="Descrição" class="list-description"><strong>${escapeHtml(product.description)}</strong></td>
       <td data-label="Marca">${escapeHtml(product.brand || '—')}</td>
+      <td data-label="Linha"><span class="commercial-line-chip">${escapeHtml(product.product_line || 'Leve')}</span></td>
       <td data-label="Aplicação" class="list-application">${escapeHtml(commercialApplicationValues(product.applications).join(' · ') || '—')}</td>
       <td data-label="Ano" class="list-year">${escapeHtml(commercialYearValues(product.years, product.applications).join(' · ') || '—')}</td>
       <td data-label="Preço s/ impostos" class="list-price">${product.base_price === null ? '—' : money(product.base_price)}</td>
@@ -296,7 +297,7 @@ function commercialListResults() {
   return `<section class="results-section commercial-list-results">
     <div class="results-meta"><span>${integer(state.productTotal)} item(ns)</span><span>Página ${state.productPage} de ${totalPages}</span></div>
     <div class="stock-legend" aria-label="Legenda de disponibilidade"><span class="stock-high"><i></i>Disponível <small>+50</small></span><span class="stock-low"><i></i>Confirmar <small>1–49</small></span><span class="stock-none"><i></i>Indisponível <small>0</small></span></div>
-    <div class="table-wrap"><table class="commercial-list-table ${bothStocks ? 'commercial-list-two-stocks' : ''}"><thead><tr>${custom ? '<th class="list-check-cell">Incluir</th>' : ''}<th>Código IPS</th><th>Descrição</th><th>Marca</th><th>Aplicação</th><th>Ano</th><th>Preço s/ impostos</th><th>Preço c/ impostos</th>${bothStocks ? '<th>Estoque PR</th><th>Qtd. PR</th><th>Estoque SP</th><th>Qtd. SP</th>' : '<th>Estoque</th><th>Quantidade</th>'}</tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="table-wrap"><table class="commercial-list-table ${bothStocks ? 'commercial-list-two-stocks' : ''}"><thead><tr>${custom ? '<th class="list-check-cell">Incluir</th>' : ''}<th>Código IPS</th><th>Descrição</th><th>Marca</th><th>Linha</th><th>Aplicação</th><th>Ano</th><th>Preço s/ impostos</th><th>Preço c/ impostos</th>${bothStocks ? '<th>Estoque PR</th><th>Qtd. PR</th><th>Estoque SP</th><th>Qtd. SP</th>' : '<th>Estoque</th><th>Quantidade</th>'}</tr></thead><tbody>${rows}</tbody></table></div>
     <div class="pagination"><button class="button button-secondary" data-page="${state.productPage - 1}" ${state.productPage <= 1 ? 'disabled' : ''}>Anterior</button><button class="button button-secondary" data-page="${state.productPage + 1}" ${state.productPage >= totalPages ? 'disabled' : ''}>Próxima</button></div>
   </section>`;
 }
@@ -1230,7 +1231,7 @@ async function handleListExport(format) {
       state.filters.inStockOnly ? 'disponíveis' : ''
     ].filter(Boolean).join(' - ');
     const titleSuffix = state.listMode === 'custom' ? 'personalizada' : (filterTitle || 'completa');
-    const payload = { title: `Lista comercial - ${titleSuffix}`, variant: 'commercial-list', items, context: { destinationState: state.destinationState, originCode: state.originCode, routeCode: `${state.originCode}-${state.destinationState}`, lines: COMMERCIAL_LINES, stockMode: state.listStockMode } };
+    const payload = { title: `Lista comercial - ${titleSuffix}`, variant: 'commercial-list', items, context: { destinationState: state.destinationState, originCode: state.originCode, routeCode: `${state.originCode}-${state.destinationState}`, lines: state.filters.line.length ? state.filters.line : COMMERCIAL_LINES, stockMode: state.listStockMode } };
     format === 'pdf' ? exportPdf(payload) : exportExcel(payload);
     setToast(`${integer(items.length)} produto(s) exportado(s).`, 'success');
   } catch (error) {
